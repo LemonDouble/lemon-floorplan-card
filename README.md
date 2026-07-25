@@ -79,7 +79,27 @@ data URI 는 그 영향을 안 받는다. (외부 `floorplan:` 을 쓸 때를 �
 
 climate 가 우선한다. 전부 HA 테마 변수라 라이트/다크가 자동으로 따라온다.
 
-**팝업** — 2단 구조다.
+**가구 클릭** — `data-entity` 가 붙은 가구는 짧게/길게 누르기를 구분한다.
+
+| | 동작 |
+|---|---|
+| 짧게 | 켜고 끄기 |
+| 길게 (기본 500ms, `hold_time` 로 조절) | more-info 다이얼로그 |
+
+짧게 눌렀을 때 도메인별 동작:
+
+- `light` `switch` `fan` `cover` `media_player` `humidifier` `climate` `siren` `valve` `remote` `input_boolean` → `homeassistant.toggle`
+- `lock` → 상태를 보고 `lock` / `unlock` (toggle 서비스가 없다)
+- 그 외 (`sensor` `binary_sensor` `vacuum` …) → 토글할 게 없으므로 more-info
+
+누르고 있는 동안 히트영역이 `hold_time` 에 맞춰 서서히 진해져서 언제 길게 누르기가
+성립하는지 보인다. 손가락이 10px 이상 움직이면 스크롤로 보고 취소한다 —
+모바일에서 평면도를 스크롤하다 기기가 켜지는 사고를 막는다.
+
+> `click` 이벤트로는 구현할 수 없다. 길게 눌러 more-info 를 연 뒤 `click` 이 또
+> 날아와 토글까지 되어버린다. `pointerdown`/`pointermove`/`pointerup` 으로 직접 짰다.
+
+**팝업** — 방을 누르면 뜬다. 2단 구조다.
 
 ```
 ┌─ 거실  27.5°C · 63% ───────── ✕ ┐

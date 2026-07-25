@@ -61,6 +61,16 @@ const OBJECT_ON = {
   cover:         (s) => s.state === "open",
 };
 
+/** 짧게 눌렀을 때 켜고 끌 수 있는 도메인. homeassistant.toggle 이 먹는 것들이다.
+ *  lock 은 toggle 서비스가 없어서 따로 처리하고, 나머지(sensor·binary_sensor·vacuum 등)는
+ *  토글할 게 없으므로 짧게 눌러도 상세를 연다. */
+const TOGGLEABLE = new Set([
+  "light", "switch", "fan", "input_boolean", "media_player",
+  "cover", "humidifier", "climate", "siren", "valve", "remote",
+]);
+const HOLD_MS = 500;      // 이 이상 누르고 있으면 길게 누른 것으로 본다
+const MOVE_TOL = 10;      // px. 이만큼 움직이면 스크롤로 보고 취소한다
+
 /** device 대표 엔티티를 고르는 순서. 앞쪽일수록 그 기기를 대표한다고 본다 */
 const PRIMARY_PRIORITY = [
   "climate", "light", "cover", "lock", "media_player", "fan",
@@ -275,11 +285,66 @@ class LemonFloorplanCard extends HTMLElement {
         if (v !== null) r.setAttribute(a, v);
       }
       r.setAttribute("class", "hotspot");
-      r.addEventListener("click", (ev) => { ev.stopPropagation(); this._moreInfo(eid); });
+      this._wirePress(r, eid);
       layer.appendChild(r);
       this._objects.push({ img, eid });
     }
     svg.appendChild(layer);                            // 맨 위
+  }
+
+  /**
+   * 짧게 누르면 켜고 끄고, 길게 누르면 상세를 연다.
+   *
+   * click 대신 pointer 이벤트로 직접 구현한다. click 만으로는 길게 누른 것을
+   * 구분할 수 없고, 길게 눌러 상세를 연 뒤에 click 이 또 날아와 토글까지
+   * 되어버리기 때문이다. 손가락이 MOVE_TOL 이상 움직이면 스크롤로 보고 취소한다.
+   */
+  _wirePress(el, eid) {
+    const hold = this._config.hold_time ?? HOLD_MS;
+    el.style.setProperty("--hold-ms", `${hold}ms`);
+
+    el.addEventListener("pointerdown", (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      const sx = ev.clientX, sy = ev.clientY;
+      let held = false;
+      el.classList.add("pressing");                 // 누르는 동안 서서히 물든다
+      try { el.setPointerCapture(ev.pointerId); } catch (_) { /* 무시 */ }
+
+      const done = () => {
+        clearTimeout(timer);
+        el.classList.remove("pressing");
+        el.removeEventListener("pointermove", move);
+        el.removeEventListener("pointerup", up);
+        el.removeEventListener("pointercancel", done);
+      };
+      const timer = setTimeout(() => { held = true; done(); this._moreInfo(eid); }, hold);
+      const move = (e) => {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) > MOVE_TOL) done();   // 스크롤
+      };
+      const up = (e) => {
+        e.stopPropagation();
+        if (held) return;                           // 이미 상세를 열었다
+        done();
+        this._tap(eid);
+      };
+      el.addEventListener("pointermove", move);
+      el.addEventListener("pointerup", up);
+      el.addEventListener("pointercancel", done);
+    });
+  }
+
+  /** 짧게 누름 */
+  _tap(eid) {
+    const hass = this._hass, st = hass.states[eid], d = dom(eid);
+    if (!st) return;
+    if (d === "lock") {
+      hass.callService("lock", st.state === "locked" ? "unlock" : "lock", { entity_id: eid });
+    } else if (TOGGLEABLE.has(d)) {
+      hass.callService("homeassistant", "toggle", { entity_id: eid });
+    } else {
+      this._moreInfo(eid);          // 켜고 끌 수 없는 건 상세를 연다
+    }
   }
 
   /**
@@ -517,8 +582,17 @@ class LemonFloorplanCard extends HTMLElement {
         .plan svg .room[data-tint="media"] { fill: var(--state-media_player-active-color, #7e57c2); }
 
         /* 엔티티가 연결된 가구: 투명 히트영역이 맨 위에 깔린다 */
-        .plan svg .hotspot { fill: transparent; pointer-events: all; cursor: pointer; }
-        .plan svg .hotspot:hover { fill: var(--state-icon-active-color, #f9a825); fill-opacity: .3; }
+        .plan svg .hotspot {
+          fill: var(--state-icon-active-color, #f9a825); fill-opacity: 0;
+          pointer-events: all; cursor: pointer; touch-action: none;
+          transition: fill-opacity .15s ease;
+        }
+        .plan svg .hotspot:hover { fill-opacity: .18; }
+        /* 누르고 있는 동안 hold_time 에 맞춰 서서히 진해진다 = 길게 누르기 진행 표시 */
+        .plan svg .hotspot.pressing {
+          fill-opacity: .45;
+          transition: fill-opacity var(--hold-ms, 500ms) linear;
+        }
         /* 켜진 기기는 은은하게 빛나게 */
         .plan svg #fp-furniture image { transition: filter .25s ease; }
         .plan svg #fp-furniture image[data-on] {
