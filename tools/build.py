@@ -25,33 +25,30 @@ PLAN = "floorplan.svg"
 def main() -> None:
     svg = (ROOT / PLAN).read_text()
 
-    missing, inlined = [], 0
-
-    def sub(m: re.Match) -> str:
-        nonlocal inlined
-        rel = m.group(2)
-        f = ROOT / rel
-        if not f.is_file():
-            missing.append(rel)
-            return m.group(0)
-        mime = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
-        b64 = base64.b64encode(f.read_bytes()).decode()
-        inlined += 1
-        return f'{m.group(1)}="data:{mime};base64,{b64}"'
-
-    # 상대경로만 인라인한다. <use href="#p-geosil"> 같은 fragment 참조와
-    # 이미 절대/data 인 것은 건드리지 않는다.
-    svg = re.sub(r'\b(href)="((?!data:|https?:|#|/)[^"]+)"', sub, svg)
-
+    # SVG 안의 상대경로를 그대로 두고, 에셋은 따로 모아 JS 맵으로 넘긴다.
+    # 예전에는 href 를 만날 때마다 data URI 를 박아 넣었는데, 천장등처럼 같은
+    # 파일을 7번 쓰면 7벌이 들어가서 1.2MB 가 됐다. 맵으로 빼면 한 벌만 담긴다.
+    used = sorted(set(re.findall(r'href="((?!data:|https?:|#|/)[^"]+)"', svg)))
+    missing = [r for r in used if not (ROOT / r).is_file()]
     if missing:
         sys.exit("참조된 파일이 없습니다:\n  " + "\n  ".join(missing))
 
+    assets = {}
+    for rel in used:
+        f = ROOT / rel
+        mime = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+        assets[rel] = f"data:{mime};base64," + base64.b64encode(f.read_bytes()).decode()
+    inlined = len(assets)
+
     # SVG 를 JS 문자열 리터럴로. json.dumps 가 따옴표·개행·백슬래시를 안전하게 이스케이프한다.
     js = (ROOT / SRC).read_text()
-    marker = 'const EMBEDDED_SVG = ""; /*__FLOORPLAN__*/'
-    if marker not in js:
-        sys.exit(f"{SRC} 에서 주입 지점을 못 찾았습니다: {marker}")
-    js = js.replace(marker, f"const EMBEDDED_SVG = {json.dumps(svg)};")
+    for marker, value in (
+        ('const EMBEDDED_SVG = ""; /*__FLOORPLAN__*/', json.dumps(svg)),
+        ('const EMBEDDED_ASSETS = {}; /*__ASSETS__*/', json.dumps(assets)),
+    ):
+        if marker not in js:
+            sys.exit(f"{SRC} 에서 주입 지점을 못 찾았습니다: {marker}")
+        js = js.replace(marker, marker.split("=")[0] + "= " + value + ";")
 
     DIST.mkdir(exist_ok=True)
     for stale in DIST.glob("*"):
@@ -59,7 +56,9 @@ def main() -> None:
             stale.unlink()
     (DIST / CARD).write_text(js)
 
-    print(f"평면도       {len(svg.encode())/1024:8.1f} KB  (이미지 {inlined}개 인라인)")
+    a = sum(len(v) for v in assets.values()) / 1024
+    print(f"평면도       {len(svg.encode())/1024:8.1f} KB")
+    print(f"에셋         {a:8.1f} KB  ({inlined}종, 중복 없음)")
     print(f"dist/{CARD}  {(DIST/CARD).stat().st_size/1024:8.1f} KB  ← HACS 배포본 (이 파일 하나면 끝)")
 
 

@@ -43,15 +43,15 @@ const DEVICES = [
 ];
 const ENTITIES = [
   // 거실
-  {entity_id:"switch.0xaaaaaaaaaaaaaaaa_top",    device_id:"dev_geosil_sw"},
+  {entity_id:"switch.0x385b44fffec08207_top",    device_id:"dev_geosil_sw"},
   // 2구 스위치의 아래 구는 엔티티 레벨로 앞 베란다에 덮어씀 — 이게 제대로 갈리는지가 핵심
-  {entity_id:"switch.0xaaaaaaaaaaaaaaaa_bottom", device_id:"dev_geosil_sw", area_id:"ap_beranda"},
+  {entity_id:"switch.0x385b44fffec08207_bottom", device_id:"dev_geosil_sw", area_id:"ap_beranda"},
   {entity_id:"light.geosil_sopadeung",           device_id:"dev_geosil_sofa"},
   {entity_id:"climate.geosil_eeokeon",           device_id:"dev_geosil_ac"},
   {entity_id:"select.geosil_eeokeon_pungryang",  device_id:"dev_geosil_ac"},
   {entity_id:"sensor.geosil_onseubdo_senseo_temperature_2", device_id:"dev_geosil_th"},
   // entity_category 가 붙은 건 걸러져야 함
-  {entity_id:"sensor.0xaaaaaaaaaaaaaaaa_linkquality", device_id:"dev_geosil_sw", entity_category:"diagnostic"},
+  {entity_id:"sensor.0x385b44fffec08207_linkquality", device_id:"dev_geosil_sw", entity_category:"diagnostic"},
   {entity_id:"button.geosil_sopadeung_identify", device_id:"dev_geosil_sofa", entity_category:"config"},
   {entity_id:"update.geosil_sopadeung",          device_id:"dev_geosil_sofa"},  // 도메인 미허용
   {entity_id:"light.hidden_thing",               device_id:"dev_geosil_sofa", hidden_by:"user"},
@@ -67,12 +67,12 @@ const ENTITIES = [
   {entity_id:"fan.zhimi_mb3_e9cc_air_purifier",  device_id:"dev_purifier"},
   // 화장실 / 현관
   {entity_id:"switch.hwajangsil_deung_seuwici",  device_id:"dev_hwajangsil"},
-  {entity_id:"lock.0xbbbbbbbbbbbbbbbb",          device_id:"dev_doorlock"},
+  {entity_id:"lock.0x00158d008b0be468",          device_id:"dev_doorlock"},
 ];
 const S = (state, attrs={}) => ({ state, attributes: attrs });
 const STATES = {
-  "switch.0xaaaaaaaaaaaaaaaa_top":    S("on",  {friendly_name:"거실 천장등"}),
-  "switch.0xaaaaaaaaaaaaaaaa_bottom": S("on",  {friendly_name:"전면 베란다 등"}),
+  "switch.0x385b44fffec08207_top":    S("on",  {friendly_name:"거실 천장등"}),
+  "switch.0x385b44fffec08207_bottom": S("on",  {friendly_name:"전면 베란다 등"}),
   "light.geosil_sopadeung":           S("off", {friendly_name:"소파등"}),
   "climate.geosil_eeokeon":           S("cool",{friendly_name:"거실 에어컨", temperature:23}),
   "select.geosil_eeokeon_pungryang":  S("자동풍",{friendly_name:"풍량"}),
@@ -82,11 +82,40 @@ const STATES = {
   "fan.zhimi_mb3_e9cc_air_purifier":  S("off", {friendly_name:"공기청정기"}),
   "switch.hwajangsil_deung_seuwici":  S("off", {friendly_name:"화장실 등"}),
   "switch.hwajangsil_hwanpunggi":     S("off", {friendly_name:"화장실 환풍기"}),
-  "lock.0xbbbbbbbbbbbbbbbb":          S("locked",{friendly_name:"현관 도어락"}),
+  "lock.0x00158d008b0be468":          S("locked",{friendly_name:"현관 도어락"}),
+  "media_player.geosil_seupikeo":     S("idle",{friendly_name:"거실 스피커"}),
+  "media_player.cimsil_seupikeo":     S("playing",{friendly_name:"침실 스피커"}),
   "sensor.router_download_speed":     S("31.2",{friendly_name:"다운로드 속도"}),
   "sensor.router_upload_speed":       S("8.4", {friendly_name:"업로드 속도"}),
   "sensor.router_packets_sent":       S("99123",{friendly_name:"보낸 패킷"}),
 };
+
+// 이번 구조 개편에서 연결한 엔티티들 (핫스팟/글로우 검증용)
+Object.assign(STATES, {
+  "switch.0x385b44fffec08207_bottom": S("on",  {friendly_name:"전면 베란다 등"}),
+  "switch.cimsil_seuwici":            S("off", {friendly_name:"침실 등"}),
+  "switch.jubang_seuwici":            S("on",  {friendly_name:"주방 등"}),
+  "switch.0x8cf681fffe92a130_top":    S("off", {friendly_name:"작은 방 벽"}),
+  "switch.0x8cf681fffe92a130_bottom": S("off", {friendly_name:"후면 베란다등"}),
+  "switch.0x8cf681fffe94a09e_bottom": S("on",  {friendly_name:"화장실 환풍기"}),
+  "switch.seumateukonsenteu":         S("on",  {friendly_name:"식물등"}),
+  "cover.geosil_keoteun":             S("open",  {friendly_name:"거실 커튼"}),
+  "cover.cimsil_keoteun":             S("closed",{friendly_name:"침실 커튼"}),
+  "light.yeelink_strip6_3ebe_light":  S("off", {friendly_name:"라인조명"}),
+  "media_player.lg_webos_bimpeurojegteo": S("off",{friendly_name:"프로젝터"}),
+  "media_player.geosil_tv_adb":       S("playing",{friendly_name:"거실 TV"}),
+  "media_player.jubang_seupikeo":     S("idle",{friendly_name:"주방 스피커"}),
+  "humidifier.ldh_7700_dehumidifier": S("on", {friendly_name:"제습기"}),
+  "humidifier.xiaomi_p3_6236_humidifier": S("off",{friendly_name:"가습기"}),
+  "sensor.air_detector":              S("612",{friendly_name:"CO2"}),
+  "vacuum.enteopeuraijeu":            S("docked",{friendly_name:"로봇청소기"}),
+  "sensor.lemon_weight":              S("70.1",{friendly_name:"몸무게"}),
+  "sensor.setaggi_washer_machine_state": S("stop",{friendly_name:"세탁기"}),
+  "sensor.geonjogi_dryer_machine_state": S("stop",{friendly_name:"건조기"}),
+  "binary_sensor.ap_beranda_cangmunsenseo_contact": S("on",{friendly_name:"앞베란다 창문"}),
+  "binary_sensor.0xa4c138816d4b88e1_contact": S("off",{friendly_name:"현관문"}),
+});
+
 // 온습도 센서에 device_class 를 달아 헤더 요약이 뜨는지 확인
 STATES["sensor.geosil_onseubdo_senseo_temperature_2"].attributes.device_class = "temperature";
 const calls = [];
@@ -106,6 +135,15 @@ card.setConfig({
   floorplan: "./floorplan.svg",
   title: "우리집",
   exclude_devices: ["EFM Networks ipTIME AX2004M"],
+  aliases: {
+    "ceiling-geosil": "switch.0x385b44fffec08207_top",
+    "ceiling-ap-beranda": "switch.0x385b44fffec08207_bottom",
+    "ceiling-jageunbang": "switch.0x8cf681fffe92a130_top",
+    "ceiling-dwi-beranda": "switch.0x8cf681fffe92a130_bottom",
+    "fan-hwajangsil": "switch.0x8cf681fffe94a09e_bottom",
+    "lock-hyeongwan": "lock.0x00158d008b0be468",
+    "contact-hyeongwan": "binary_sensor.0xa4c138816d4b88e1_contact",
+  },
 });
 document.getElementById("host").appendChild(card);
 card.hass = hass;

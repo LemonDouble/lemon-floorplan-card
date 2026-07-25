@@ -31,7 +31,87 @@ ITEMS = {
                    "seam line across the front edge where the two doors meet and a subtle rounded "
                    "front edge so it reads as a fridge. The door fronts are NOT visible",
     "dining-table":"a small square dining table with two chairs",
-    "desk":        "a rectangular study desk with a chair",
+    "desk":        "a rectangular computer desk with a chair, a monitor on a stand and a keyboard "
+                   "laid on the desktop, all seen from directly above",
+
+    # ── HA 에 등록된 기기들 ────────────────────────────────────────────────
+    "curtain":     "a pair of window curtains seen from directly above: a straight curtain rail "
+                   "with two gathered fabric bundles at each end and a soft wavy fabric line "
+                   "running between them, drawn as a long thin horizontal element",
+    "speaker":     "a small round smart speaker seen from directly above - a fabric-covered "
+                   "circular puck with a subtle ring on top",
+    # 주의: "circular grille" 같은 말을 넣으면 실외기(condenser)가 나온다.
+    # 실내 스탠드형은 위에서 보면 팬이 없는 좁고 긴 둥근 사각형이다.
+    "ac-stand":    "the TOP SURFACE of a tall indoor floor-standing tower air conditioner, viewed "
+                   "from the ceiling looking straight down. Its footprint is ROUGHLY SQUARE - "
+                   "about as wide as it is deep (a real unit is ~36cm x 36cm) - drawn as a "
+                   "rounded square with softly rounded front corners, a plain flat top panel and "
+                   "one thin seam line near the front edge. Absolutely NO fan, NO circular "
+                   "grille, NO vents on top - a big round fan would make it an outdoor condenser "
+                   "unit, which this is NOT. Do not draw it as a long narrow slab",
+    "ac-wall":     "the TOP SURFACE of a wall-mounted split air conditioner indoor unit, viewed "
+                   "from the ceiling looking straight down - a long thin rounded rectangle with "
+                   "a slim grille line along one long edge. The front panel is NOT visible",
+    "air-purifier":"the TOP SURFACE of a cylindrical air purifier, viewed from the ceiling "
+                   "looking straight down - a circle with a round mesh outlet grille and a small "
+                   "control dial on top",
+    "dehumidifier":"the TOP SURFACE of a boxy dehumidifier, viewed from the ceiling looking "
+                   "straight down - a rounded rectangle with a slotted air outlet and a small "
+                   "control panel on top",
+    "humidifier":  "the TOP SURFACE of a cylindrical ultrasonic humidifier, viewed from the "
+                   "ceiling looking straight down - a circle with a round mist nozzle opening "
+                   "in the centre",
+    "projector":   "the TOP SURFACE of a small home projector, viewed from the ceiling looking "
+                   "straight down - a rounded rectangle with a focus ring and a couple of "
+                   "buttons on top",
+    "floor-lamp":  "a floor lamp seen from directly above - a round fabric lampshade circle with "
+                   "a small round base visible at its centre",
+    "led-strip":   "an LED light strip seen from directly above - a very long thin straight bar "
+                   "with a soft even glow along its length",
+    # 본체를 흰색으로 두면 누끼 3단계(순수 배경색 제거)가 피사체에 구멍을 낸다.
+    # 흰 배경과 겹치지 않게 회색 본체로 못박는다.
+    "air-monitor": "a small square air quality monitor seen from directly above - a rounded "
+                   "square puck with a WARM MID-GREY body (clearly darker than white, never "
+                   "white) and a slim dark display bezel on top",
+    "scale":       "a square bathroom weighing scale seen from directly above - a flat glass "
+                   "square with a small display strip near one edge",
+
+    # ── 천장/벽 부착물. 평면도에서는 방 안 해당 위치에 심볼로 얹는다 ──────────
+    "ceiling-light":"a round flush-mount ceiling light fixture seen straight on - a circle with "
+                    "a soft warm glowing diffuser panel and a thin slim rim around it, "
+                    "flat and simple",
+    "exhaust-fan": "a square ceiling exhaust fan vent seen straight on - a square grille with "
+                   "evenly spaced parallel slats and a small round hub in the middle",
+    "table-lamp":  "a small bedside table lamp seen from directly above - a SQUARE fabric "
+                   "lampshade with a small round finial dot at its centre (square shade, not "
+                   "round, so it reads differently from a floor lamp)",
+    "door-lock":   "a smart door lock keypad module seen from directly above - a small vertical "
+                   "rounded rectangle with a subtle keypad grid and a thin handle bar beside it",
+    "contact-sensor":"a door and window contact sensor seen from directly above - one slim small "
+                     "rounded rectangle body with a smaller thin magnet block right next to it, "
+                     "a narrow gap between the two",
+
+    # ── 장식용. HA 엔티티와 연결하지 않는다 ──────────────────────────────
+    # 흰 가구는 반드시 "순백 아님" 을 못박는다. 순수 흰색이면 누끼 3단계가
+    # 배경으로 오인해 본체에 구멍을 낸다 (air-monitor 에서 실제로 겪음).
+    "shelf-unit":  "the TOP SURFACE of a tall standing bookshelf unit viewed from directly above "
+                   "- a long narrow light-wood top board with three thin vertical divider seams "
+                   "showing the compartments below",
+    "ac-outdoor":  "the TOP SURFACE of an outdoor air conditioner condenser unit viewed from "
+                   "directly above - a rectangular metal box with a large circular fan guard "
+                   "grille with radial bars on top",
+    "plant-shelf": "a low plant stand shelf seen from directly above - a wooden rectangular "
+                   "shelf board with three small potted green plants of different sizes "
+                   "arranged on it",
+    "wardrobe-white":"the TOP SURFACE of a tall two-door wardrobe closet, viewed from the ceiling "
+                     "looking straight down - a rectangle showing the flat top panel with a thin "
+                     "seam line down the middle. The body is a SOFT OFF-WHITE / very light warm "
+                     "grey - clearly NOT pure white - with a visible thin darker outline. "
+                     "The doors and handles are NOT visible from this angle",
+    "table-white": "a plain rectangular table seen from directly above - a simple long rectangle "
+                   "with slightly rounded corners and four thin legs just visible at the corners. "
+                   "The top is SOFT OFF-WHITE / very light warm grey, clearly NOT pure white, "
+                   "with a visible thin darker outline",
     "vacuum-dock": "a robot vacuum cleaner sitting on its charging dock",
     "toilet":      "a toilet bowl with a cistern",
     "washbasin":   "a bathroom washbasin with a mirror cabinet",

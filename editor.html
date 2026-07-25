@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가구 배치 편집기 · lemon floorplan</title>
+<style>
+  :root {
+    --primary-text-color:#1c1c1e; --secondary-text-color:#6b7280;
+    --secondary-background-color:#f1f3f6; --divider-color:#b9bec7;
+    --state-icon-active-color:#f9a825; --page-bg:#fff;
+  }
+  body.dark {
+    --primary-text-color:#e6e6e6; --secondary-text-color:#9aa0a6;
+    --secondary-background-color:#2b2f36; --divider-color:#4a505a;
+    --state-icon-active-color:#ffca28; --page-bg:#14161a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px;background:var(--page-bg);color:var(--primary-text-color);
+       font:14px/1.55 system-ui,-apple-system,"Noto Sans KR",sans-serif}
+  .wrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;max-width:1280px;margin:0 auto}
+  @media (max-width:900px){.wrap{grid-template-columns:1fr}}
+  h1{font-size:17px;margin:0 0 4px}
+  .hint{color:var(--secondary-text-color);font-size:13px;margin-bottom:12px}
+  kbd{background:var(--secondary-background-color);border:1px solid var(--divider-color);
+      border-radius:5px;padding:1px 6px;font:12px ui-monospace,monospace}
+  button{font:inherit;padding:6px 13px;border-radius:8px;cursor:pointer;
+         border:1px solid var(--divider-color);background:var(--secondary-background-color);
+         color:var(--primary-text-color)}
+  button.primary{background:var(--state-icon-active-color);border-color:transparent;color:#1c1c1e;font-weight:600}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+  svg{width:100%;height:auto;display:block;touch-action:none}
+  #stage{border:1px solid var(--divider-color);border-radius:12px;overflow:hidden}
+  #list{border:1px solid var(--divider-color);border-radius:12px;padding:10px;
+        max-height:44vh;overflow:auto}
+  #list div{padding:5px 8px;border-radius:7px;cursor:pointer;display:flex;gap:8px;
+            font:12px ui-monospace,monospace}
+  #list div:hover{background:var(--secondary-background-color)}
+  #list div.sel{background:var(--state-icon-active-color);color:#1c1c1e}
+  #list div span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                             font-family:system-ui,sans-serif}
+  textarea{width:100%;height:230px;margin-top:10px;font:11px/1.5 ui-monospace,monospace;
+           border:1px solid var(--divider-color);border-radius:8px;padding:8px;
+           background:var(--secondary-background-color);color:var(--primary-text-color);resize:vertical}
+  .sel-box{fill:none;stroke:#e5484d;stroke-width:3;stroke-dasharray:8 6;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>가구 배치 편집기</h1>
+    <div class="hint">
+      가구를 <b>끌어서</b> 옮깁니다 ·
+      <kbd>휠</kbd> 크기 ·
+      <kbd>Shift</kbd>+<kbd>휠</kbd> 15° 회전 ·
+      <kbd>←↑↓→</kbd> 1칸 (<kbd>Shift</kbd> 10칸) ·
+      <kbd>Delete</kbd> 제거
+    </div>
+    <div class="bar">
+      <button id="theme">다크</button>
+      <button id="reset">되돌리기</button>
+      <button class="primary" id="dump">SVG 출력</button>
+      <span id="status" style="color:var(--secondary-text-color)"></span>
+    </div>
+    <div id="stage"></div>
+  </div>
+  <div>
+    <div id="list"></div>
+    <textarea id="out" readonly placeholder="SVG 출력을 누르면 floorplan.svg 의 #fp-furniture 에 통째로 넣을 코드가 나옵니다."></textarea>
+    <button id="copy" style="margin-top:8px">클립보드 복사</button>
+  </div>
+</div>
+
+<script type="module">
+const stage = document.getElementById("stage");
+const listEl = document.getElementById("list");
+const out = document.getElementById("out");
+const status = document.getElementById("status");
+
+let svg, items = [], sel = null, initial = null;
+
+const num = (el, a, d = 0) => parseFloat(el.getAttribute(a) ?? d);
+
+// no-store: 같은 origin 에서 예전에 다른 floorplan.svg 를 서빙했다면 캐시가 물린다.
+// (실제로 dist 빌드본이 캐시돼서 href 가 data URI 로 나오는 일이 있었다)
+fetch("floorplan.svg", { cache: "no-store" }).then(r => r.text()).then(txt => {
+  stage.innerHTML = txt;
+  svg = stage.querySelector("#lemon-floorplan");
+
+  // 편집 중에는 방 히트영역이 드래그를 가로채지 않게 한다
+  svg.querySelectorAll(".room").forEach(r => r.style.pointerEvents = "none");
+
+  items = [...svg.querySelectorAll("#fp-furniture image")].map(el => {
+    el.style.pointerEvents = "all";
+    el.style.cursor = "move";
+    const m = /rotate\(\s*(-?[\d.]+)/.exec(el.getAttribute("transform") || "");
+    return {
+      el,
+      name: (el.getAttribute("href") || "").split("/").pop().replace(/\.\w+$/, ""),
+      x: num(el, "x"), y: num(el, "y"),
+      w: num(el, "width"), h: num(el, "height"),
+      r: m ? parseFloat(m[1]) : 0,
+    };
+  });
+  initial = structuredClone(items.map(({ el, ...v }) => v));
+
+  const box = document.createElementNS(svg.namespaceURI, "rect");
+  box.setAttribute("class", "sel-box");
+  box.style.display = "none";
+  svg.appendChild(box);
+  svg.__box = box;
+
+  // 개별 <image> 에 리스너를 달면 안 된다. <image> 의 클릭 판정은 보이는 그림이 아니라
+  // x/y/width/height 상자 전체라, 겹치면 문서 순서상 마지막 것이 무조건 이긴다.
+  // 대신 SVG 에서 한 번 받아서 "겹친 것 중 가장 작은 것" 을 고른다.
+  svg.addEventListener("pointerdown", onPointerDown);
+  svg.addEventListener("wheel", onWheel, { passive: false });
+  renderList();
+  status.textContent = `가구 ${items.length}개`;
+});
+
+// 화면 좌표 -> viewBox 좌표
+function toVB(e) {
+  const p = svg.createSVGPoint();
+  p.x = e.clientX; p.y = e.clientY;
+  return p.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function apply(it) {
+  it.el.setAttribute("x", round(it.x));
+  it.el.setAttribute("y", round(it.y));
+  it.el.setAttribute("width", round(it.w));
+  it.el.setAttribute("height", round(it.h));
+  if (it.r) it.el.setAttribute("transform",
+    `rotate(${round(it.r)} ${round(it.x + it.w / 2)} ${round(it.y + it.h / 2)})`);
+  else it.el.removeAttribute("transform");
+  drawSel();
+}
+const round = (n) => Math.round(n * 10) / 10;
+
+function drawSel() {
+  const b = svg.__box;
+  if (sel === null) { b.style.display = "none"; return; }
+  const it = items[sel];
+  b.setAttribute("x", it.x); b.setAttribute("y", it.y);
+  b.setAttribute("width", it.w); b.setAttribute("height", it.h);
+  if (it.r) b.setAttribute("transform",
+    `rotate(${it.r} ${it.x + it.w / 2} ${it.y + it.h / 2})`);
+  else b.removeAttribute("transform");
+  b.style.display = "";
+}
+
+function select(i) {
+  sel = i;
+  [...listEl.children].forEach((c, j) => c.classList.toggle("sel", j === i));
+  drawSel();
+  if (i !== null) {
+    const it = items[i];
+    status.textContent = `${it.name}  ${round(it.x)},${round(it.y)}  ${round(it.w)}×${round(it.h)}`;
+    // scrollIntoView 는 페이지까지 스크롤시켜 클릭 좌표를 어긋나게 만든다.
+    // 목록 컨테이너 안에서만 직접 스크롤한다.
+    const row = listEl.children[i];
+    if (row) {
+      const top = row.offsetTop - listEl.offsetTop;
+      if (top < listEl.scrollTop) listEl.scrollTop = top;
+      else if (top + row.offsetHeight > listEl.scrollTop + listEl.clientHeight)
+        listEl.scrollTop = top + row.offsetHeight - listEl.clientHeight;
+    }
+  }
+}
+
+/** 점이 아이템 상자 안에 있는지. 회전은 역회전시켜서 판정한다. */
+function hits(it, p) {
+  let { x, y } = p;
+  if (it.r) {
+    const cx = it.x + it.w / 2, cy = it.y + it.h / 2;
+    const a = -it.r * Math.PI / 180, dx = x - cx, dy = y - cy;
+    x = cx + dx * Math.cos(a) - dy * Math.sin(a);
+    y = cy + dx * Math.sin(a) + dy * Math.cos(a);
+  }
+  return x >= it.x && x <= it.x + it.w && y >= it.y && y <= it.y + it.h;
+}
+
+function onPointerDown(e) {
+  const p = toVB(e);
+  const cand = items
+    .map((it, i) => ({ i, area: it.w * it.h, hit: hits(it, p) }))
+    .filter(c => c.hit)
+    .sort((a, b) => a.area - b.area);        // 겹치면 작은 쪽이 우선
+  if (!cand.length) { select(null); return; }
+  startDrag(e, cand[0].i);
+}
+
+function startDrag(e, i) {
+  e.preventDefault();
+  select(i);
+  const it = items[i];
+  const s = toVB(e), ox = it.x, oy = it.y;
+  const move = (ev) => {
+    const p = toVB(ev);
+    it.x = ox + (p.x - s.x); it.y = oy + (p.y - s.y);
+    apply(it); renderList();
+  };
+  const up = () => {
+    svg.removeEventListener("pointermove", move);
+    svg.removeEventListener("pointerup", up);
+  };
+  svg.addEventListener("pointermove", move);
+  svg.addEventListener("pointerup", up);
+}
+
+function onWheel(e) {
+  if (sel === null) return;
+  e.preventDefault();
+  const it = items[sel];
+  if (e.shiftKey) {
+    it.r = (it.r + (e.deltaY > 0 ? 15 : -15)) % 360;
+  } else {
+    const k = e.deltaY > 0 ? 0.94 : 1.06;
+    const cx = it.x + it.w / 2, cy = it.y + it.h / 2;
+    it.w *= k; it.h *= k;
+    it.x = cx - it.w / 2; it.y = cy - it.h / 2;
+  }
+  apply(it); renderList();
+}
+
+addEventListener("keydown", (e) => {
+  if (sel === null) return;
+  const it = items[sel];
+  if (e.key === "Delete" || e.key === "Backspace") {
+    it.el.remove(); items.splice(sel, 1); sel = null;
+    renderList(); drawSel(); return;
+  }
+  const d = e.shiftKey ? 10 : 1;
+  const map = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] };
+  if (!map[e.key]) return;
+  e.preventDefault();
+  it.x += map[e.key][0]; it.y += map[e.key][1];
+  apply(it); renderList();
+});
+
+function renderList() {
+  listEl.innerHTML = "";
+  items.forEach((it, i) => {
+    const d = document.createElement("div");
+    d.className = i === sel ? "sel" : "";
+    const ent = it.el.getAttribute("data-entity");
+    d.innerHTML = `<span>${it.name}${ent ? " 🔗" : ""}</span>` +
+      `<span>${round(it.x)},${round(it.y)} ${round(it.w)}×${round(it.h)}${it.r ? " " + round(it.r) + "°" : ""}</span>`;
+    if (ent) d.title = ent;
+    d.onclick = () => select(i);
+    listEl.appendChild(d);
+  });
+}
+
+document.getElementById("dump").onclick = () => {
+  const lines = items.map(it => {
+    const t = it.r ? ` transform="rotate(${round(it.r)} ${round(it.x + it.w / 2)} ${round(it.y + it.h / 2)})"` : "";
+    const href = it.el.getAttribute("href");
+    // data-entity 를 빠뜨리면 붙여넣는 순간 엔티티 연결이 전부 날아간다
+    const ent = it.el.getAttribute("data-entity");
+    return `    <image href="${href}"${ent ? ` data-entity="${ent}"` : ""} ` +
+           `x="${round(it.x)}" y="${round(it.y)}" ` +
+           `width="${round(it.w)}" height="${round(it.h)}"${t}/>`;
+  });
+  out.value = `  <g id="fp-furniture">\n${lines.join("\n")}\n  </g>`;
+  status.textContent = "출력했습니다. floorplan.svg 의 #fp-furniture 를 통째로 교체하세요.";
+};
+
+document.getElementById("copy").onclick = async () => {
+  if (!out.value) return;
+  await navigator.clipboard.writeText(out.value);
+  status.textContent = "복사했습니다.";
+};
+
+document.getElementById("reset").onclick = () => {
+  initial.forEach((v, i) => { if (items[i]) Object.assign(items[i], v), apply(items[i]); });
+  renderList(); status.textContent = "되돌렸습니다.";
+};
+
+document.getElementById("theme").onclick = (e) => {
+  document.body.classList.toggle("dark");
+  e.target.textContent = document.body.classList.contains("dark") ? "라이트" : "다크";
+};
+</script>
+</body>
+</html>

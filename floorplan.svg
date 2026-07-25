@@ -115,29 +115,54 @@
        preserveAspectRatio 기본값(xMidYMid meet) 덕에 비율은 알아서 유지된다.
        위치를 옮기려면 x,y 만 고치면 된다. preview.html 의 "좌표 찍기" 참고. -->
   <g id="fp-furniture">
-    <!-- 거실. x200 아래로 내려가면 화장실을 침범하므로 소파·TV 는 x200 우측에 둔다 -->
-    <image href="fp/sofa.webp"         x="200" y="180" width="180" height="84"/>
-    <image href="fp/tv-stand.webp"     x="215" y="400" width="150" height="41"/>
-    <!-- 침실. 문 스윙(x445~515, y335~405)을 피해 오른쪽에 옷장 -->
-    <image href="fp/bed.webp"          x="600" y="175" width="130" height="164"/>
-    <image href="fp/wardrobe.webp"     x="690" y="348" width="120" height="47"/>
-    <!-- 주방 -->
-    <image href="fp/fridge.webp"       x="445" y="420" width="80"  height="56"/>
-    <image href="fp/dining-table.webp" x="470" y="490" width="110" height="60"/>
-    <image href="fp/sink-counter.webp" x="445" y="570" width="153" height="60"/>
-    <!-- 작은방. 문 스윙(x620~690, y425~495)을 피해 책상은 오른쪽으로 -->
-    <image href="fp/desk.webp"         x="725" y="425" width="110" height="83"/>
-    <image href="fp/vacuum-dock.webp"  x="810" y="580" width="40"  height="44"/>
-    <!-- 화장실 -->
-    <image href="fp/toilet.webp"       x="75"  y="420" width="42"  height="70"/>
-    <image href="fp/washbasin.webp"    x="135" y="425" width="52"  height="55"/>
-    <!-- 현관 -->
-    <image href="fp/shoe-rack.webp"    x="210" y="462" width="110" height="35"/>
-    <!-- 앞 베란다 -->
-    <image href="fp/plants.webp"       x="95"  y="62"  width="68"  height="73"/>
-    <!-- 뒷베란다 -->
-    <image href="fp/washer.webp"       x="470" y="672" width="64"  height="55"/>
-    <image href="fp/dryer.webp"        x="548" y="672" width="60"  height="55"/>
+    <!-- data-entity 가 붙은 것은 카드가 클릭 핫스팟을 만들고 more-info 를 띄운다.
+         없는 것은 장식이라 클릭이 방 폴리곤으로 그대로 떨어진다.
+         좌표는 editor.html 에서 배치한 결과다. -->
+    <image href="fp/ceiling-light.webp" data-entity="@ceiling-ap-beranda" x="416.4" y="114.4" width="30" height="30"/>
+    <image href="fp/plants.webp" data-entity="switch.seumateukonsenteu" x="317" y="45.7" width="60" height="64"/>
+    <image href="fp/contact-sensor.webp" data-entity="binary_sensor.ap_beranda_cangmunsenseo_contact" x="690" y="48" width="26" height="13"/>
+    <image href="fp/plant-shelf.webp" x="378.3" y="45.2" width="84.6" height="40.4"/>
+    <image href="fp/ac-outdoor.webp" x="460.9" y="43.5" width="85.1" height="63.8"/>
+    <image href="fp/ceiling-light.webp" data-entity="@ceiling-geosil" x="270.5" y="285.9" width="36" height="36"/>
+    <image href="fp/curtain.webp" data-entity="cover.geosil_keoteun" x="91.1" y="155.8" width="309.7" height="16.7"/>
+    <image href="fp/table-lamp.webp" data-entity="light.geosil_sopadeung" x="129.5" y="175.8" width="27" height="27"/>
+    <image href="fp/led-strip.webp" data-entity="light.yeelink_strip6_3ebe_light" x="491.5" y="581" width="94" height="7.9" transform="rotate(-90 538.5 585)"/>
+    <image href="fp/tv-stand.webp" data-entity="media_player.geosil_tv_adb" x="339.8" y="221.9" width="134.3" height="37.1" transform="rotate(-90 407 240.5)"/>
+    <image href="fp/speaker.webp" data-entity="media_player.jubang_seupikeo" x="463.8" y="569.1" width="24" height="24"/>
+    <image href="fp/ac-stand.webp" data-entity="climate.geosil_eeokeon" x="345.7" y="170.6" width="37" height="38"/>
+    <image href="fp/dehumidifier.webp" data-entity="humidifier.ldh_7700_dehumidifier" x="197.7" y="410.9" width="42" height="32" transform="rotate(-90 218.7 426.9)"/>
+    <image href="fp/humidifier.webp" data-entity="humidifier.xiaomi_p3_6236_humidifier" x="778.2" y="47" width="35.1" height="35.1"/>
+    <image href="fp/sofa.webp" x="30.5" y="207.4" width="132.7" height="61.7" transform="rotate(-90 96.9 238.2)"/>
+    <image href="fp/table-white.webp" x="468.5" y="564.7" width="84.8" height="48.3" transform="rotate(-90 510.9 588.8)"/>
+    <image href="fp/ceiling-light.webp" data-entity="switch.cimsil_seuwici" x="567.9" y="254.2" width="34" height="34"/>
+    <image href="fp/curtain.webp" data-entity="cover.cimsil_keoteun" x="443.9" y="151.7" width="341.7" height="26.6"/>
+    <image href="fp/ac-wall.webp" data-entity="climate.cimsil_byeokgeori_eeokeon" x="398" y="211.4" width="95.1" height="21" transform="rotate(-90 445.6 221.9)"/>
+    <image href="fp/speaker.webp" data-entity="media_player.cimsil_seupikeo" x="785.8" y="248.4" width="24" height="24"/>
+    <image href="fp/projector.webp" data-entity="media_player.lg_webos_bimpeurojegteo" x="515.3" y="262.6" width="38" height="28" transform="rotate(-90 534.3 276.6)"/>
+    <image href="fp/air-purifier.webp" data-entity="fan.zhimi_mb3_e9cc_air_purifier" x="620.2" y="185.6" width="38.2" height="38.2"/>
+    <image href="fp/floor-lamp.webp" data-entity="light.cimsil_ganjeobdeung" x="573.5" y="363.5" width="33.7" height="33.7"/>
+    <image href="fp/air-monitor.webp" data-entity="sensor.air_detector" x="765.8" y="175.2" width="22" height="22"/>
+    <image href="fp/bed.webp" x="673.5" y="258.8" width="125" height="157" transform="rotate(90 736 337.3)"/>
+    <image href="fp/wardrobe.webp" x="396.7" y="676.5" width="129.2" height="50.6" transform="rotate(-90 461.3 701.8)"/>
+    <image href="fp/wardrobe-white.webp" x="730.8" y="450.6" width="163" height="81.5" transform="rotate(-90 812.3 491.4)"/>
+    <image href="fp/ceiling-light.webp" data-entity="switch.hwajangsil_deung_seuwici" x="150.4" y="439.6" width="33.7" height="33.7"/>
+    <image href="fp/exhaust-fan.webp" data-entity="@fan-hwajangsil" x="67.5" y="313.1" width="35.3" height="35.3"/>
+    <image href="fp/toilet.webp" x="77.8" y="457.4" width="38" height="64" transform="rotate(-90 96.8 489.4)"/>
+    <image href="fp/washbasin.webp" x="61.9" y="414.2" width="50.9" height="54.1" transform="rotate(-90 87.4 441.2)"/>
+    <image href="fp/door-lock.webp" data-entity="@lock-hyeongwan" x="240.1" y="492.1" width="25.6" height="24.1" transform="rotate(90 252.9 504.1)"/>
+    <image href="fp/contact-sensor.webp" data-entity="@contact-hyeongwan" x="312" y="500" width="24" height="12"/>
+    <image href="fp/ceiling-light.webp" data-entity="switch.jubang_seuwici" x="507.7" y="468" width="32" height="32"/>
+    <image href="fp/speaker.webp" data-entity="media_player.geosil_seupikeo" x="400.1" y="309.7" width="22" height="22"/>
+    <image href="fp/fridge.webp" x="433.9" y="595.6" width="55" height="38.2" transform="rotate(-180 461.5 614.7)"/>
+    <image href="fp/sink-counter.webp" x="537" y="556.3" width="113.2" height="44.5" transform="rotate(-270 593.6 578.5)"/>
+    <image href="fp/ceiling-light.webp" data-entity="@ceiling-jageunbang" x="714.7" y="484.3" width="32" height="32"/>
+    <image href="fp/vacuum-dock.webp" data-entity="vacuum.enteopeuraijeu" x="627.7" y="584.1" width="45.3" height="48.8" transform="rotate(90 650.4 608.5)"/>
+    <image href="fp/scale.webp" data-entity="sensor.lemon_weight" x="391.3" y="338.7" width="34" height="34" transform="rotate(-90 408.3 355.7)"/>
+    <image href="fp/desk.webp" x="657.9" y="171.3" width="118" height="88.8"/>
+    <image href="fp/shelf-unit.webp" x="23.1" y="87.3" width="111.2" height="23.3" transform="rotate(-90 78.7 99)"/>
+    <image href="fp/ceiling-light.webp" data-entity="@ceiling-dwi-beranda" x="624.8" y="661.4" width="33.7" height="33.7"/>
+    <image href="fp/washer.webp" data-entity="sensor.setaggi_washer_machine_state" x="796.4" y="644.5" width="63.4" height="53.9" transform="rotate(90 828.1 671.4)"/>
+    <image href="fp/dryer.webp" data-entity="sensor.geonjogi_dryer_machine_state" x="796.5" y="706.8" width="59.4" height="55.1" transform="rotate(90 826.2 734.3)"/>
   </g>
 
   <!-- ── 히트영역 + 상태 틴트 ───────────────────────────────── -->
@@ -154,7 +179,7 @@
 
   <!-- ── 창 (벽이 끊긴 구간을 얇은 선으로) ──────────────────── -->
   <g id="fp-windows">
-    <path class="window" d="M115,155 H255"/>   <!-- 거실 ↔ 앞베란다 -->
+    <path class="window" d="M105,155 H385"/>   <!-- 거실 ↔ 앞베란다 -->
     <path class="window" d="M475,155 H790"/>   <!-- 침실 ↔ 앞베란다 -->
     <path class="window" d="M513,635 H592"/>   <!-- 주방 ↔ 뒷베란다 -->
     <path class="window" d="M678,635 H812"/>   <!-- 작은방 ↔ 뒷베란다 -->
@@ -170,9 +195,10 @@
 
   <!-- ── 내벽 ───────────────────────────────────────────────── -->
   <g id="fp-walls-inner">
-    <!-- 앞베란다 ↔ 거실·침실 (창 2곳 제외) -->
-    <path class="wall-in" d="M60,155 H115"/>
-    <path class="wall-in" d="M255,155 H475"/>
+    <!-- 앞베란다 ↔ 거실·침실. 창 2곳(거실 105~385 / 침실 475~790)만큼 끊는다.
+         양쪽 다 방 양 끝에서 45 씩만 남기므로 창 비율이 서로 비슷해진다 -->
+    <path class="wall-in" d="M60,155 H105"/>
+    <path class="wall-in" d="M385,155 H475"/>
     <path class="wall-in" d="M790,155 H820"/>
 
     <!-- 거실 ↔ 침실. 침실 하단(y405)에서 끝난다.

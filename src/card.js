@@ -36,6 +36,9 @@ const CARD_TAG = "lemon-floorplan-card";
    두면 404 가 난다. 그래서 배포본은 이 파일 하나로 자족한다.
    config.floorplan 을 주면 그쪽이 우선이라 다른 평면도로 갈아끼울 수 있다. */
 const EMBEDDED_SVG = ""; /*__FLOORPLAN__*/
+/* 가구 이미지. 상대경로 -> data URI. SVG 안에 직접 박지 않고 여기 모으는 이유는
+   천장등처럼 같은 파일을 여러 번 쓰는 오브젝트가 많아서다 (박아 넣으면 7벌이 들어간다). */
+const EMBEDDED_ASSETS = {}; /*__ASSETS__*/
 
 /** 방 색을 결정할 때 "켜짐"으로 볼 도메인 */
 const ACTIVE_RULES = {
@@ -46,6 +49,16 @@ const ACTIVE_RULES = {
   climate:      (s) => !["off", "unavailable", "unknown"].includes(s.state),
   humidifier:   (s) => s.state === "on",
   vacuum:       (s) => ["cleaning", "returning"].includes(s.state),
+};
+
+/** 가구 하나하나를 빛나게 할 때 "켜짐"으로 볼 규칙.
+ *  ACTIVE_RULES(방 틴트용) 보다 넓다 — 문 열림·잠금 해제처럼
+ *  방 전체를 물들일 정도는 아니지만 개별 표시에는 의미 있는 것들을 포함한다. */
+const OBJECT_ON = {
+  ...ACTIVE_RULES,
+  binary_sensor: (s) => s.state === "on",        // 문·창문 열림
+  lock:          (s) => s.state === "unlocked",
+  cover:         (s) => s.state === "open",
 };
 
 /** device 대표 엔티티를 고르는 순서. 앞쪽일수록 그 기기를 대표한다고 본다 */
@@ -87,7 +100,7 @@ class LemonFloorplanCard extends HTMLElement {
     if (!config.floorplan && !EMBEDDED_SVG) {
       throw new Error("floorplan: SVG 경로가 필요합니다 (예: /local/floorplan.svg)");
     }
-    this._config = { exclude: [], exclude_devices: [], rooms: {}, ...config };
+    this._config = { exclude: [], exclude_devices: [], rooms: {}, aliases: {}, ...config };
     this._exEnt = new Set(this._config.exclude);
     this._exDev = new Set(this._config.exclude_devices);
     this._ready = false;
@@ -113,6 +126,7 @@ class LemonFloorplanCard extends HTMLElement {
       this._render();
       await Promise.all([this._loadSvg(), this._loadRegistry()]);
       this._wireRooms();
+      this._wireObjects();
       this._ready = true;
       this._paint();
     } catch (err) {
@@ -125,15 +139,15 @@ class LemonFloorplanCard extends HTMLElement {
   async _loadSvg() {
     const plan = this.shadowRoot.querySelector(".plan");
 
-    if (!this._config.floorplan) {          // 빌드에 심어둔 기본 평면도
-      plan.innerHTML = EMBEDDED_SVG;
-      return;                                // 이미지가 전부 data URI 라 경로 보정이 필요 없다
+    let base = null;
+    if (this._config.floorplan) {
+      base = new URL(this._config.floorplan, location.href);
+      const res = await fetch(base);
+      if (!res.ok) throw new Error(`평면도를 못 읽었습니다: ${this._config.floorplan} (${res.status})`);
+      plan.innerHTML = await res.text();
+    } else {
+      plan.innerHTML = EMBEDDED_SVG;         // 빌드에 심어둔 기본 평면도
     }
-
-    const base = new URL(this._config.floorplan, location.href);
-    const res = await fetch(base);
-    if (!res.ok) throw new Error(`평면도를 못 읽었습니다: ${this._config.floorplan} (${res.status})`);
-    plan.innerHTML = await res.text();
 
     // SVG 를 문서에 인라인하면 그 안의 상대경로는 SVG 파일 위치가 아니라
     // "지금 보고 있는 페이지 URL" 기준으로 풀린다. HA 에서는 /lovelace/home 이라
@@ -143,7 +157,13 @@ class LemonFloorplanCard extends HTMLElement {
     for (const el of plan.querySelectorAll("image")) {
       const href = el.getAttribute("href") ?? el.getAttributeNS(XLINK, "href");
       if (!href || /^(?:[a-z]+:|\/\/|\/)/i.test(href)) continue;   // 절대 URL·data: 는 그대로
-      el.setAttribute("href", new URL(href, base).href);
+
+      // 빌드에 담긴 에셋이면 그걸 쓰고, 아니면 floorplan 경로 기준으로 절대화한다.
+      // 절대화가 필요한 이유: SVG 를 문서에 인라인하면 그 안의 상대경로가 SVG 위치가
+      // 아니라 "지금 보고 있는 페이지 URL" 기준으로 풀린다. HA 에서는 /lovelace/home
+      // 이라 fp/x.webp 가 /lovelace/fp/x.webp 가 되고, HA 는 모르는 경로에 SPA 폴백으로
+      // index.html 을 200 으로 내려주기 때문에 404 도 안 뜨고 그냥 엑박이 된다.
+      el.setAttribute("href", EMBEDDED_ASSETS[href] ?? new URL(href, base ?? location.href).href);
       el.removeAttributeNS(XLINK, "href");
     }
   }
@@ -228,6 +248,61 @@ class LemonFloorplanCard extends HTMLElement {
     }
   }
 
+  /**
+   * data-entity 가 붙은 가구마다 투명 히트영역을 SVG 맨 위에 만든다.
+   *
+   * 가구 레이어를 그냥 클릭 가능하게 만들 수는 없다. 가구는 방 틴트(.room)에
+   * 덮여야 예쁘고, 그러려면 가구가 방보다 아래에 있어야 하는데, 아래에 있으면
+   * 클릭을 방이 먼저 먹는다. 그래서 위치만 복사한 rect 를 맨 위에 깐다.
+   * data-entity 가 없는 장식 가구는 rect 가 안 생기므로 클릭이 방으로 떨어진다.
+   */
+  _wireObjects() {
+    const svg = this.shadowRoot.querySelector("#lemon-floorplan");
+    if (!svg) return;
+    this._objects = [];
+
+    let layer = svg.querySelector("#fp-hotspots");
+    if (layer) layer.remove();
+    layer = document.createElementNS(svg.namespaceURI, "g");
+    layer.id = "fp-hotspots";
+
+    for (const img of svg.querySelectorAll("#fp-furniture image[data-entity]")) {
+      const eid = this._resolve(img.getAttribute("data-entity"));
+      if (!eid || !this._hass.states[eid]) continue;  // 없는 엔티티는 조용히 건너뛴다
+      const r = document.createElementNS(svg.namespaceURI, "rect");
+      for (const a of ["x", "y", "width", "height", "transform"]) {
+        const v = img.getAttribute(a);
+        if (v !== null) r.setAttribute(a, v);
+      }
+      r.setAttribute("class", "hotspot");
+      r.addEventListener("click", (ev) => { ev.stopPropagation(); this._moreInfo(eid); });
+      layer.appendChild(r);
+      this._objects.push({ img, eid });
+    }
+    svg.appendChild(layer);                            // 맨 위
+  }
+
+  /**
+   * data-entity 값을 실제 entity_id 로 푼다.
+   *
+   * "@key" 형태면 config.aliases[key] 를 본다. 평면도 SVG 는 공개 저장소에
+   * 올라가므로, 밖에 내보이고 싶지 않은 entity_id(예: Zigbee IEEE 주소가 박힌
+   * 자동 생성 ID)는 SVG 에 직접 쓰지 않고 별칭으로 두고 실제 매핑은
+   * HA 안에만 있는 대시보드 설정에 적는다. 그냥 entity_id 를 써도 된다.
+   */
+  _resolve(v) {
+    if (!v) return null;
+    if (!v.startsWith("@")) return v;
+    return this._config.aliases[v.slice(1)] || null;
+  }
+
+  /** HA 기본 more-info 다이얼로그를 띄운다. composed:true 라야 shadow DOM 을 뚫는다 */
+  _moreInfo(entityId) {
+    this.dispatchEvent(new CustomEvent("hass-more-info", {
+      detail: { entityId }, bubbles: true, composed: true,
+    }));
+  }
+
   // ── 상태 반영 ──────────────────────────────────────────────
 
   /** set hass 는 시스템 전체 상태 변화마다 불린다. 바뀐 방만 건드린다. */
@@ -257,6 +332,17 @@ class LemonFloorplanCard extends HTMLElement {
 
       if (tint) el.setAttribute("data-tint", tint);
       else el.removeAttribute("data-tint");
+    }
+
+    // 가구 하나하나도 자기 엔티티 상태에 따라 빛낸다
+    for (const o of this._objects || []) {
+      const st = hass.states[o.eid];
+      const rule = st && OBJECT_ON[dom(o.eid)];
+      const on = !!(rule && rule(st));
+      if (o.on === on) continue;                       // 안 바뀌었으면 DOM 안 만짐
+      o.on = on;
+      if (on) o.img.setAttribute("data-on", "");
+      else o.img.removeAttribute("data-on");
     }
   }
 
@@ -429,6 +515,16 @@ class LemonFloorplanCard extends HTMLElement {
         .plan svg .room[data-tint="cool"]  { fill: var(--state-climate-cool-color, #2196f3); }
         .plan svg .room[data-tint="heat"]  { fill: var(--state-climate-heat-color, #ff8a65); }
         .plan svg .room[data-tint="media"] { fill: var(--state-media_player-active-color, #7e57c2); }
+
+        /* 엔티티가 연결된 가구: 투명 히트영역이 맨 위에 깔린다 */
+        .plan svg .hotspot { fill: transparent; pointer-events: all; cursor: pointer; }
+        .plan svg .hotspot:hover { fill: var(--state-icon-active-color, #f9a825); fill-opacity: .3; }
+        /* 켜진 기기는 은은하게 빛나게 */
+        .plan svg #fp-furniture image { transition: filter .25s ease; }
+        .plan svg #fp-furniture image[data-on] {
+          filter: drop-shadow(0 0 5px var(--state-icon-active-color, #f9a825))
+                  drop-shadow(0 0 10px var(--state-icon-active-color, #f9a825));
+        }
 
         /* 팝업 */
         dialog {

@@ -62,7 +62,7 @@
 const out = document.getElementById("out");
 const log = (s) => { out.textContent += s + "\n"; };
 
-fetch("floorplan.svg").then(r => r.text()).then(txt => {
+fetch("floorplan.svg", { cache: "no-store" }).then(r => r.text()).then(txt => {
   document.getElementById("stage").innerHTML = txt;
   const svg = document.querySelector("#lemon-floorplan");
   const vb = svg.viewBox.baseVal;
