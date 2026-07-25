@@ -71,6 +71,108 @@ const TOGGLEABLE = new Set([
 const HOLD_MS = 500;      // 이 이상 누르고 있으면 길게 누른 것으로 본다
 const MOVE_TOL = 10;      // px. 이만큼 움직이면 스크롤로 보고 취소한다
 
+const round1 = (n) => Math.round(n * 10) / 10;
+
+/** SVG 의 <image> 하나에서 위치/크기/회전을 읽는다 */
+function readBox(el) {
+  const num = (a, d = 0) => parseFloat(el.getAttribute(a) ?? d);
+  const m = /rotate\(\s*(-?[\d.]+)/.exec(el.getAttribute("transform") || "");
+  return { x: num("x"), y: num("y"), w: num("width"), h: num("height"),
+           r: m ? parseFloat(m[1]) : 0 };
+}
+
+/** 읽은 값을 다시 <image> 에 쓴다. 회전 중심은 항상 상자 중심이라 중심은 안 움직인다 */
+function writeBox(el, b) {
+  el.setAttribute("x", round1(b.x));
+  el.setAttribute("y", round1(b.y));
+  el.setAttribute("width", round1(b.w));
+  el.setAttribute("height", round1(b.h));
+  if (b.r) {
+    el.setAttribute("transform",
+      `rotate(${round1(b.r)} ${round1(b.x + b.w / 2)} ${round1(b.y + b.h / 2)})`);
+  } else {
+    el.removeAttribute("transform");
+  }
+}
+
+/** 점이 상자 안에 있는지. 회전은 역회전시켜 판정한다 */
+function boxHit(b, px, py) {
+  let x = px, y = py;
+  if (b.r) {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const a = -b.r * Math.PI / 180, dx = x - cx, dy = y - cy;
+    x = cx + dx * Math.cos(a) - dy * Math.sin(a);
+    y = cy + dx * Math.sin(a) + dy * Math.cos(a);
+  }
+  return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+}
+
+/** 화면 좌표 -> viewBox 좌표 */
+function toViewBox(svg, ev) {
+  const p = svg.createSVGPoint();
+  p.x = ev.clientX; p.y = ev.clientY;
+  return p.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+/**
+ * 평면도 SVG 를 container 에 심고 이미지 경로를 해결한다. 카드와 편집기가 공유한다.
+ *
+ * SVG 를 문서에 인라인하면 그 안의 상대경로는 SVG 파일 위치가 아니라 "지금 보고 있는
+ * 페이지 URL" 기준으로 풀린다. HA 에서는 /lovelace/home 이라 fp/sofa.webp 가
+ * /lovelace/fp/sofa.webp 가 되고, HA 는 모르는 경로에 SPA 폴백으로 index.html 을
+ * 200 으로 내려주기 때문에 404 도 안 뜨고 그냥 엑박이 된다. 그래서 절대화가 필요하다.
+ */
+async function mountPlan(container, config) {
+  let base = null;
+  if (config.floorplan) {
+    base = new URL(config.floorplan, location.href);
+    const res = await fetch(base);
+    if (!res.ok) throw new Error(`평면도를 못 읽었습니다: ${config.floorplan} (${res.status})`);
+    container.innerHTML = await res.text();
+  } else if (EMBEDDED_SVG) {
+    container.innerHTML = EMBEDDED_SVG;          // 빌드에 심어둔 기본 평면도
+  } else {
+    // 빌드를 거치지 않은 소스를 그대로 쓰면 여기로 온다 (개발용)
+    throw new Error("내장 평면도가 없습니다. floorplan 을 지정하거나 tools/build.py 로 빌드하세요.");
+  }
+  if (!container.querySelector("svg")) throw new Error("평면도에서 <svg> 를 찾지 못했습니다.");
+  const XLINK = "http://www.w3.org/1999/xlink";
+  for (const el of container.querySelectorAll("image")) {
+    const href = el.getAttribute("href") ?? el.getAttributeNS(XLINK, "href");
+    if (!href || /^(?:[a-z]+:|\/\/|\/)/i.test(href)) continue;   // 절대 URL·data: 는 그대로
+    el.setAttribute("href", EMBEDDED_ASSETS[href] ?? new URL(href, base ?? location.href).href);
+    el.removeAttributeNS(XLINK, "href");
+  }
+}
+
+/**
+ * config.layout 을 SVG 에 얹는다.
+ * SVG 에 구워진 위치가 기본값이고, layout 에 있는 것만 덮어쓴다.
+ * 키는 <image> 의 id (o-sofa-1 처럼 안정적인 값) — 순서에 의존하지 않으므로
+ * 나중에 오브젝트를 지우거나 추가해도 저장된 위치가 밀리지 않는다.
+ */
+function applyLayout(root, layout) {
+  if (!layout) return;
+  for (const [id, v] of Object.entries(layout)) {
+    const el = root.querySelector(`#fp-furniture [id="${CSS.escape(id)}"]`);
+    if (!el) continue;                       // 없어진 오브젝트는 조용히 무시
+    writeBox(el, { ...readBox(el), ...v });
+  }
+}
+
+/** 현재 SVG 상태에서 layout 을 뽑는다. 기본값과 같은 건 넣지 않아 설정이 작게 유지된다 */
+function collectLayout(root, base) {
+  const out = {};
+  for (const el of root.querySelectorAll("#fp-furniture image[id]")) {
+    const b = readBox(el), d = base[el.id];
+    if (!d) continue;
+    if (["x", "y", "w", "h", "r"].every((k) => Math.abs(b[k] - d[k]) < 0.05)) continue;
+    out[el.id] = { x: round1(b.x), y: round1(b.y), w: round1(b.w), h: round1(b.h) };
+    if (b.r) out[el.id].r = round1(b.r);
+  }
+  return out;
+}
+
 /** device 대표 엔티티를 고르는 순서. 앞쪽일수록 그 기기를 대표한다고 본다 */
 const PRIMARY_PRIORITY = [
   "climate", "light", "cover", "lock", "media_player", "fan",
@@ -148,34 +250,8 @@ class LemonFloorplanCard extends HTMLElement {
 
   async _loadSvg() {
     const plan = this.shadowRoot.querySelector(".plan");
-
-    let base = null;
-    if (this._config.floorplan) {
-      base = new URL(this._config.floorplan, location.href);
-      const res = await fetch(base);
-      if (!res.ok) throw new Error(`평면도를 못 읽었습니다: ${this._config.floorplan} (${res.status})`);
-      plan.innerHTML = await res.text();
-    } else {
-      plan.innerHTML = EMBEDDED_SVG;         // 빌드에 심어둔 기본 평면도
-    }
-
-    // SVG 를 문서에 인라인하면 그 안의 상대경로는 SVG 파일 위치가 아니라
-    // "지금 보고 있는 페이지 URL" 기준으로 풀린다. HA 에서는 /lovelace/home 이라
-    // fp/sofa.webp 가 /lovelace/fp/sofa.webp 가 되고, HA 는 그걸 SPA 폴백으로
-    // index.html 을 내려주기 때문에 엑박이 뜬다. floorplan 경로 기준으로 절대화한다.
-    const XLINK = "http://www.w3.org/1999/xlink";
-    for (const el of plan.querySelectorAll("image")) {
-      const href = el.getAttribute("href") ?? el.getAttributeNS(XLINK, "href");
-      if (!href || /^(?:[a-z]+:|\/\/|\/)/i.test(href)) continue;   // 절대 URL·data: 는 그대로
-
-      // 빌드에 담긴 에셋이면 그걸 쓰고, 아니면 floorplan 경로 기준으로 절대화한다.
-      // 절대화가 필요한 이유: SVG 를 문서에 인라인하면 그 안의 상대경로가 SVG 위치가
-      // 아니라 "지금 보고 있는 페이지 URL" 기준으로 풀린다. HA 에서는 /lovelace/home
-      // 이라 fp/x.webp 가 /lovelace/fp/x.webp 가 되고, HA 는 모르는 경로에 SPA 폴백으로
-      // index.html 을 200 으로 내려주기 때문에 404 도 안 뜨고 그냥 엑박이 된다.
-      el.setAttribute("href", EMBEDDED_ASSETS[href] ?? new URL(href, base ?? location.href).href);
-      el.removeAttributeNS(XLINK, "href");
-    }
+    await mountPlan(plan, this._config);
+    applyLayout(plan, this._config.layout);
   }
 
   /**
@@ -690,6 +766,186 @@ class LemonFloorplanCard extends HTMLElement {
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 }
+
+/**
+ * HA 카드 편집기. 대시보드 → 카드 편집을 열면 여기서 가구를 끌어 옮기고,
+ * HA 의 저장 버튼이 config 를 저장한다.
+ *
+ * 카드가 대시보드 설정을 직접 쓰지 않는 이유: lovelace/config/save 는 대시보드
+ * 전체를 읽어 다시 쓰는 것이라, 버그가 있으면 다른 카드까지 날린다. HA 에 맡기면
+ * 저장·취소·되돌리기가 전부 기본 동작을 따른다.
+ */
+class LemonFloorplanCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._base = {};     // SVG 에 구워진 원래 위치. layout 이 이걸 덮어쓴다
+    this._sel = null;
+  }
+
+  setConfig(config) {
+    this._config = { ...config };
+    if (!this._booted) { this._booted = true; this._boot(); }
+  }
+  set hass(hass) { this._hass = hass; }
+
+  async _boot() {
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+               padding: 4px 0 10px; font: 13px/1.5 var(--ha-font-family-body, system-ui, sans-serif);
+               color: var(--secondary-text-color); }
+        button { font: inherit; padding: 5px 12px; border-radius: 8px; cursor: pointer;
+                 border: 1px solid var(--divider-color, #ddd);
+                 background: var(--secondary-background-color, #f1f3f6);
+                 color: var(--primary-text-color); }
+        kbd { background: var(--secondary-background-color, #eee);
+              border: 1px solid var(--divider-color, #ddd); border-radius: 5px;
+              padding: 0 5px; font-size: 12px; }
+        .plan { position: relative; border: 1px solid var(--divider-color, #ddd);
+                border-radius: 12px; overflow: hidden; }
+        .plan svg { width: 100%; height: auto; display: block; touch-action: none; }
+        .plan svg .room { pointer-events: none; }
+        .plan svg #fp-furniture image { pointer-events: none; }
+        .plan svg #fp-hotspots { display: none; }
+        .sel { fill: none; stroke: var(--error-color, #e5484d); stroke-width: 3;
+               stroke-dasharray: 8 6; pointer-events: none; }
+        .err { padding: 12px; color: var(--error-color, #db4437); font: 13px ui-monospace, monospace; }
+      </style>
+      <div class="bar">
+        <button id="reset">배치 되돌리기</button>
+        <span><b>끌기</b> 이동 · <kbd>휠</kbd> 크기 · <kbd>Shift</kbd>+<kbd>휠</kbd> 회전
+              · <kbd>←↑↓→</kbd> 미세조정</span>
+        <span id="n" style="margin-inline-start:auto"></span>
+      </div>
+      <div class="plan"></div>
+    `;
+    const plan = this.shadowRoot.querySelector(".plan");
+    try {
+      await mountPlan(plan, this._config);
+    } catch (err) {
+      plan.innerHTML = `<div class="err">${String(err.message || err)}</div>`;
+      return;
+    }
+
+    const svg = plan.querySelector("svg");
+    this._svg = svg;
+    for (const el of svg.querySelectorAll("#fp-furniture image[id]")) {
+      this._base[el.id] = readBox(el);              // layout 적용 전이 기본값
+    }
+    applyLayout(plan, this._config.layout);
+
+    const box = document.createElementNS(svg.namespaceURI, "rect");
+    box.setAttribute("class", "sel");
+    box.style.display = "none";
+    svg.appendChild(box);
+    this._box = box;
+
+    svg.addEventListener("pointerdown", (e) => this._down(e));
+    svg.addEventListener("wheel", (e) => this._wheel(e), { passive: false });
+    this.addEventListener("keydown", (e) => this._key(e));
+    this.tabIndex = 0;
+    this.shadowRoot.getElementById("reset").onclick = () => this._reset();
+    this._count();
+  }
+
+  _items() { return [...this._svg.querySelectorAll("#fp-furniture image[id]")]; }
+
+  _down(ev) {
+    ev.preventDefault();
+    const p = toViewBox(this._svg, ev);
+    // 겹치면 작은 쪽을 고른다. <image> 는 보이는 그림이 아니라 상자 전체가
+    // 판정 영역이라, 문서 순서에 맡기면 큰 것이 작은 것을 덮어버린다.
+    const hit = this._items()
+      .map((el) => ({ el, b: readBox(el) }))
+      .filter(({ b }) => boxHit(b, p.x, p.y))
+      .sort((a, z) => a.b.w * a.b.h - z.b.w * z.b.h)[0];
+    if (!hit) { this._select(null); return; }
+
+    this._select(hit.el);
+    const start = readBox(hit.el);
+    const move = (e) => {
+      const q = toViewBox(this._svg, e);
+      writeBox(hit.el, { ...start, x: start.x + (q.x - p.x), y: start.y + (q.y - p.y) });
+      this._drawSel();
+    };
+    const up = () => {
+      this._svg.removeEventListener("pointermove", move);
+      this._svg.removeEventListener("pointerup", up);
+      this._emit();
+    };
+    this._svg.addEventListener("pointermove", move);
+    this._svg.addEventListener("pointerup", up);
+  }
+
+  _wheel(ev) {
+    if (!this._sel) return;
+    ev.preventDefault();
+    const b = readBox(this._sel);
+    if (ev.shiftKey) {
+      b.r = (b.r + (ev.deltaY > 0 ? 15 : -15)) % 360;
+    } else {
+      const k = ev.deltaY > 0 ? 0.94 : 1.06;
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      b.w *= k; b.h *= k; b.x = cx - b.w / 2; b.y = cy - b.h / 2;
+    }
+    writeBox(this._sel, b);
+    this._drawSel();
+    this._emit();
+  }
+
+  _key(ev) {
+    if (!this._sel) return;
+    const d = ev.shiftKey ? 10 : 1;
+    const map = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] };
+    if (!map[ev.key]) return;
+    ev.preventDefault();
+    const b = readBox(this._sel);
+    writeBox(this._sel, { ...b, x: b.x + map[ev.key][0], y: b.y + map[ev.key][1] });
+    this._drawSel();
+    this._emit();
+  }
+
+  _select(el) { this._sel = el; this._drawSel(); }
+
+  _drawSel() {
+    if (!this._sel) { this._box.style.display = "none"; return; }
+    const b = readBox(this._sel);
+    this._box.setAttribute("x", b.x); this._box.setAttribute("y", b.y);
+    this._box.setAttribute("width", b.w); this._box.setAttribute("height", b.h);
+    if (b.r) this._box.setAttribute("transform",
+      `rotate(${b.r} ${b.x + b.w / 2} ${b.y + b.h / 2})`);
+    else this._box.removeAttribute("transform");
+    this._box.style.display = "";
+  }
+
+  _reset() {
+    for (const el of this._items()) if (this._base[el.id]) writeBox(el, this._base[el.id]);
+    this._select(null);
+    this._emit();
+  }
+
+  _count() {
+    const n = Object.keys(this._config.layout || {}).length;
+    this.shadowRoot.getElementById("n").textContent = n ? `옮긴 것 ${n}개` : "";
+  }
+
+  /** HA 가 이 이벤트를 받아 config 를 갱신하고, 저장 버튼을 누르면 기록한다 */
+  _emit() {
+    const layout = collectLayout(this._svg, this._base);
+    this._config = { ...this._config };
+    if (Object.keys(layout).length) this._config.layout = layout;
+    else delete this._config.layout;
+    this._count();
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._config }, bubbles: true, composed: true,
+    }));
+  }
+}
+
+customElements.define(`${CARD_TAG}-editor`, LemonFloorplanCardEditor);
+LemonFloorplanCard.getConfigElement = () => document.createElement(`${CARD_TAG}-editor`);
 
 customElements.define(CARD_TAG, LemonFloorplanCard);
 

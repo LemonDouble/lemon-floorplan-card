@@ -180,3 +180,16 @@ window.__setState = (eid, st) => {
 </script>
 </body>
 </html>
+<script type="module">
+// 카드 편집기 하네스: HA 가 하는 일(setConfig + config-changed 수신)을 흉내낸다
+const ed = document.createElement("lemon-floorplan-card-editor");
+ed.style.cssText = "display:block;max-width:720px;margin-top:32px";
+let live = { type: "custom:lemon-floorplan-card", floorplan: "./floorplan.svg" };
+ed.addEventListener("config-changed", (e) => { live = e.detail.config; });
+document.querySelector(".wrap").appendChild(
+  Object.assign(document.createElement("h3"), {textContent: "카드 편집기", style: "margin-top:32px"}));
+document.querySelector(".wrap").appendChild(ed);
+ed.setConfig(live);
+window.__editor = ed;
+window.__liveConfig = () => live;
+</script>
