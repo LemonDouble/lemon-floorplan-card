@@ -31,6 +31,12 @@
 
 const CARD_TAG = "lemon-floorplan-card";
 
+/* tools/build.py 가 여기에 floorplan.svg 를 통째로 밀어 넣는다 (가구 이미지까지 인라인된 것).
+   HACS 는 plugin 릴리스에서 "레포 이름과 같은 .js" 하나만 가져가므로, SVG 를 별도 파일로
+   두면 404 가 난다. 그래서 배포본은 이 파일 하나로 자족한다.
+   config.floorplan 을 주면 그쪽이 우선이라 다른 평면도로 갈아끼울 수 있다. */
+const EMBEDDED_SVG = ""; /*__FLOORPLAN__*/
+
 /** 방 색을 결정할 때 "켜짐"으로 볼 도메인 */
 const ACTIVE_RULES = {
   light:        (s) => s.state === "on",
@@ -78,7 +84,7 @@ class LemonFloorplanCard extends HTMLElement {
   // ── 라이프사이클 ────────────────────────────────────────────
 
   setConfig(config) {
-    if (!config.floorplan) {
+    if (!config.floorplan && !EMBEDDED_SVG) {
       throw new Error("floorplan: SVG 경로가 필요합니다 (예: /local/floorplan.svg)");
     }
     this._config = { exclude: [], exclude_devices: [], rooms: {}, ...config };
@@ -117,11 +123,16 @@ class LemonFloorplanCard extends HTMLElement {
   }
 
   async _loadSvg() {
+    const plan = this.shadowRoot.querySelector(".plan");
+
+    if (!this._config.floorplan) {          // 빌드에 심어둔 기본 평면도
+      plan.innerHTML = EMBEDDED_SVG;
+      return;                                // 이미지가 전부 data URI 라 경로 보정이 필요 없다
+    }
+
     const base = new URL(this._config.floorplan, location.href);
     const res = await fetch(base);
     if (!res.ok) throw new Error(`평면도를 못 읽었습니다: ${this._config.floorplan} (${res.status})`);
-
-    const plan = this.shadowRoot.querySelector(".plan");
     plan.innerHTML = await res.text();
 
     // SVG 를 문서에 인라인하면 그 안의 상대경로는 SVG 파일 위치가 아니라

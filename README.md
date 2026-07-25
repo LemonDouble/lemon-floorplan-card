@@ -18,7 +18,6 @@ Settings에서 기기 area만 바꾸면 카드가 자동으로 따라온다.
 
 ```yaml
 type: custom:lemon-floorplan-card
-floorplan: /hacsfiles/lemon-floorplan-card/floorplan.svg
 title: 우리집             # 선택
 exclude_devices:          # 선택 — device_id 또는 device 이름. 통째로 뺀다
   - "EFM Networks ipTIME AX2004M"      # 센서 13개짜리 공유기 같은 것
@@ -29,27 +28,42 @@ rooms:                    # 선택 — 대표 엔티티 직접 지정
     primary: [climate.geosil_eeokeon, light.geosil_sopadeung]
 ```
 
-> `floorplan` 은 자기 집 평면도로 바꿔야 한다. 이 저장소의 SVG 는 예시다.
+> **평면도가 빌드에 내장돼 있다.** `floorplan` 을 안 주면 이 저장소의 평면도를 쓴다.
+> 자기 집 평면도로 바꾸려면 `floorplan.svg` 를 고치고 `tools/build.py` 를 돌리거나,
+> `floorplan: /local/my-plan.svg` 로 외부 파일을 지정하면 된다.
 > 방 polygon 의 id 를 `room-<area_id>` 로 맞추는 것이 카드와의 유일한 계약이다.
 
 ### 수동 설치
 
-`dist/` 의 두 파일을 `config/www/` 에 복사하고, Settings → Dashboards → ⋮ →
-Resources 에서 `/local/lemon-floorplan-card.js` 를 **JavaScript Module** 로 등록한다.
-`dist/floorplan.svg` 는 가구 이미지가 안에 들어 있어서 그 파일 하나면 된다.
+`dist/lemon-floorplan-card.js` **한 개**를 `config/www/` 에 복사하고, Settings →
+Dashboards → ⋮ → Resources 에서 `/local/lemon-floorplan-card.js` 를
+**JavaScript Module** 로 등록한다.
 
 ## 배포
 
 ```bash
-python3 tools/build.py     # fp/*.webp 를 SVG 에 인라인해서 dist/ 생성
-git add -A && git commit && git push
+python3 tools/build.py                       # dist/lemon-floorplan-card.js 생성
+git add -A && git commit -m "..." && git push
 gh release create v1.0.1 --generate-notes
 ```
 
-HACS 는 plugin 을 받을 때 `dist/` 를 먼저 본다. "js 가 아닌 파일이 필요하면 카드
-파일까지 전부 dist 에 넣어라" 까지는 문서에 있지만 **dist 하위 디렉토리를 재귀적으로
-받는지는 문서에 없다.** 그래서 `build.py` 가 가구 이미지를 SVG 안에 data URI 로 인라인해
-`dist/` 를 평면 2파일로 만든다. 부수 효과로 상대경로 문제도 사라진다.
+### 왜 한 파일인가
+
+**HACS 는 plugin 릴리스에서 "레포 이름과 같은 `.js`" 하나만 가져간다.**
+`dist/` 에 `floorplan.svg` 를 나란히 뒀더니 받아가지 않았다
+(`/hacsfiles/lemon-floorplan-card/floorplan.svg` → 404). 실측으로 확인한 동작이다.
+
+그래서 빌드가 2단계로 인라인해서 배포본을 `.js` 한 개로 만든다:
+
+```
+fp/*.webp  --(data URI)-->  floorplan.svg  --(JS 문자열)-->  dist/lemon-floorplan-card.js
+                                                              310 KB
+```
+
+부수 효과로 상대경로 문제도 사라진다 — 카드가 SVG 를 shadow DOM 에 인라인하면
+내부 상대경로가 "SVG 위치" 가 아니라 **"보고 있는 페이지 URL"** 기준으로 풀리는데,
+data URI 는 그 영향을 안 받는다. (외부 `floorplan:` 을 쓸 때를 위해 `_loadSvg()` 의
+경로 절대화 로직은 남겨뒀다.)
 
 ## 동작
 
