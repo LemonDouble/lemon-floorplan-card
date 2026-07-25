@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lemon floorplan · preview</title>
+<style>
+  :root {
+    --primary-text-color: #1c1c1e;
+    --secondary-text-color: #6b7280;
+    --secondary-background-color: #f1f3f6;
+    --divider-color: #b9bec7;
+    --state-icon-active-color: #f9a825;
+    --page-bg: #ffffff;
+  }
+  body.dark {
+    --primary-text-color: #e6e6e6;
+    --secondary-text-color: #9aa0a6;
+    --secondary-background-color: #2b2f36;
+    --divider-color: #4a505a;
+    --state-icon-active-color: #ffca28;
+    --page-bg: #14161a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--page-bg);
+    color: var(--primary-text-color);
+    font: 14px/1.5 system-ui, -apple-system, "Noto Sans KR", sans-serif;
+  }
+  .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  button {
+    font: inherit; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--divider-color);
+    background: var(--secondary-background-color);
+    color: var(--primary-text-color);
+  }
+  button[aria-pressed="true"] { border-color: var(--state-icon-active-color); }
+  .stage { max-width: 720px; }
+  #out {
+    margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+    background: var(--secondary-background-color);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; white-space: pre-wrap; min-height: 2.6em;
+  }
+  svg { width: 100%; height: auto; display: block; }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <button id="theme">다크 모드</button>
+  <button id="pick" aria-pressed="false">좌표 찍기</button>
+  <button id="clear">지우기</button>
+  <span id="hint" style="color:var(--secondary-text-color)">방을 클릭하면 id가, "좌표 찍기" 중에는 클릭 지점의 좌표가 아래에 쌓입니다.</span>
+</div>
+
+<div class="stage" id="stage"></div>
+<div id="out"></div>
+
+<script>
+const out = document.getElementById("out");
+const log = (s) => { out.textContent += s + "\n"; };
+
+fetch("floorplan.svg").then(r => r.text()).then(txt => {
+  document.getElementById("stage").innerHTML = txt;
+  const svg = document.querySelector("#lemon-floorplan");
+  const vb = svg.viewBox.baseVal;
+
+  // 방 클릭 → area_id 확인 + 활성 표시 토글
+  svg.querySelectorAll(".room").forEach(r => {
+    r.addEventListener("click", (e) => {
+      if (picking) return;
+      e.stopPropagation();
+      r.classList.toggle("is-active");
+      log(`room → ${r.id.replace("room-", "")}`);
+    });
+  });
+
+  // 좌표 찍기: 클릭 지점을 viewBox 좌표 + % 둘 다로
+  svg.addEventListener("click", (e) => {
+    if (!picking) return;
+    const p = svg.createSVGPoint();
+    p.x = e.clientX; p.y = e.clientY;
+    const l = p.matrixTransform(svg.getScreenCTM().inverse());
+    const px = ((l.x - vb.x) / vb.width  * 100).toFixed(2);
+    const py = ((l.y - vb.y) / vb.height * 100).toFixed(2);
+    log(`${Math.round(l.x)},${Math.round(l.y)}   (${px}%, ${py}%)`);
+  });
+});
+
+let picking = false;
+document.getElementById("pick").onclick = (e) => {
+  picking = !picking;
+  e.target.setAttribute("aria-pressed", String(picking));
+};
+document.getElementById("clear").onclick = () => { out.textContent = ""; };
+document.getElementById("theme").onclick = (e) => {
+  document.body.classList.toggle("dark");
+  e.target.textContent = document.body.classList.contains("dark") ? "라이트 모드" : "다크 모드";
+};
+</script>
+</body>
+</html>

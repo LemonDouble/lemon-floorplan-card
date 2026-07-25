@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 810" id="lemon-floorplan" role="img" aria-label="집 평면도">
+  <!--
+    좌표계
+      viewBox 920 x 810 / 건물 외곽 (60,40) ~ (860,770)
+
+      X 그리드                                        Y 그리드
+        60  좌측 외벽                                   40  상단 외벽
+       200  화장실 우측벽                               155  앞베란다 / 거실·침실
+       361  현관 단차 경계 (벽 아님)                    310  화장실 상단
+       430  거실/침실 경계 · 주방 좌측                  405  침실 하단 · 주방·작은방 상단
+            (y405 아래는 벽 없이 트임)                  455  거실 하단 · 현관 상단
+       620  주방 / 작은방                               515  화장실·현관 하단 (외벽)
+       820  침실 · 앞베란다 우측                        635  주방·작은방 하단 · 뒷베란다 상단
+       860  작은방 · 뒷베란다 우측                      770  하단 외벽
+
+    레이어 순서 (아래 → 위)
+      fp-floor      바닥 재질. defs 의 방 도형을 <use> 로 재사용
+      fp-furniture  가구. <image> 를 여기에 넣는다 (지금은 비어 있음)
+      fp-rooms      히트영역 + 상태 틴트. 기본 투명, 카드가 data-tint 를 붙이면 물든다
+      벽 / 창 / 단차 / 문
+      fp-labels     방 이름
+
+    방 도형은 defs 에 한 번만 정의하고 두 레이어가 <use> 로 공유한다.
+    좌표를 고칠 때 한 군데만 고치면 된다.
+
+    <use id="room-*"> 의 id 는 HA area_id 와 1:1 이며 카드와의 유일한 계약이다.
+  -->
+
+  <style>
+    #lemon-floorplan {
+      --fp-floor:   var(--secondary-background-color, #f1f3f6);
+      --fp-floor-2: color-mix(in srgb, var(--secondary-background-color, #f1f3f6) 88%, var(--primary-text-color, #1c1c1e));
+      --fp-grain:   color-mix(in srgb, var(--divider-color, #b9bec7) 55%, transparent);
+      --fp-wall:    var(--primary-text-color, #1c1c1e);
+      --fp-line:    var(--divider-color, #b9bec7);
+      --fp-label:   var(--secondary-text-color, #6b7280);
+    }
+
+    /* 바닥 재질 */
+    .fl-base   { fill: var(--fp-floor); }
+    .fl-base2  { fill: var(--fp-floor-2); }
+    .fl-grain  { fill: none; stroke: var(--fp-grain); stroke-width: 1.2; }
+    .floor.wood { fill: url(#fp-wood); }
+    .floor.tile { fill: url(#fp-tile); }
+
+    /* 히트영역 + 틴트. 기본은 투명하고 카드가 data-tint 로 물들인다 */
+    .room {
+      fill: var(--state-icon-active-color, #f9a825);
+      fill-opacity: 0;
+      pointer-events: all;
+      cursor: pointer;
+      transition: fill-opacity .25s ease, fill .25s ease;
+    }
+    .room:hover { fill-opacity: .14; }
+
+    .wall     { fill: none; stroke: var(--fp-wall); stroke-width: 11; stroke-linecap: square; }
+    .wall-in  { fill: none; stroke: var(--fp-wall); stroke-width: 8;  stroke-linecap: square; }
+    .window   { fill: none; stroke: var(--fp-line); stroke-width: 4; }
+    .door     { fill: none; stroke: var(--fp-line); stroke-width: 3; }
+    /* 벽이 아니라 바닥 마감이 바뀌는 경계(현관 단차 등) */
+    .threshold{ fill: none; stroke: var(--fp-line); stroke-width: 3; stroke-dasharray: 9 7; }
+
+    .label {
+      fill: var(--fp-label);
+      font: 600 24px/1 system-ui, -apple-system, "Noto Sans KR", sans-serif;
+      text-anchor: middle; dominant-baseline: central;
+      pointer-events: none; user-select: none;
+    }
+    .label.sm { font-size: 19px; }
+
+    #fp-furniture image { pointer-events: none; }
+  </style>
+
+  <defs>
+    <!-- 마루: 세로 이음매가 줄마다 어긋나게 2줄짜리 타일 -->
+    <pattern id="fp-wood" width="150" height="52" patternUnits="userSpaceOnUse">
+      <rect class="fl-base" width="150" height="52"/>
+      <path class="fl-grain" d="M0,26 H150 M0,52 H150 M45,0 V26 M115,26 V52"/>
+    </pattern>
+
+    <!-- 타일: 정사각 그리드 -->
+    <pattern id="fp-tile" width="36" height="36" patternUnits="userSpaceOnUse">
+      <rect class="fl-base2" width="36" height="36"/>
+      <path class="fl-grain" d="M36,0 V36 M0,36 H36"/>
+    </pattern>
+
+    <!-- 방 도형 원본. fp-floor 와 fp-rooms 가 <use> 로 공유한다 -->
+    <polygon id="p-ap_beranda"  points="60,40 820,40 820,155 60,155"/>
+    <polygon id="p-geosil"      points="60,155 430,155 430,515 361,515 361,455 200,455 200,310 60,310"/>
+    <polygon id="p-cimsil"      points="430,155 820,155 820,405 430,405"/>
+    <polygon id="p-hwajangsil"  points="60,310 200,310 200,515 60,515"/>
+    <polygon id="p-hyeongwan"   points="200,455 361,455 361,515 200,515"/>
+    <polygon id="p-jubang"      points="430,405 620,405 620,635 430,635"/>
+    <polygon id="p-jageunbang"  points="620,405 860,405 860,635 620,635"/>
+    <polygon id="p-dwi_beranda" points="430,635 860,635 860,770 430,770"/>
+  </defs>
+
+  <!-- ── 바닥 재질 ──────────────────────────────────────────── -->
+  <g id="fp-floor">
+    <use href="#p-geosil"      class="floor wood"/>
+    <use href="#p-cimsil"      class="floor wood"/>
+    <use href="#p-jageunbang"  class="floor wood"/>
+    <use href="#p-jubang"      class="floor tile"/>
+    <use href="#p-hwajangsil"  class="floor tile"/>
+    <use href="#p-hyeongwan"   class="floor tile"/>
+    <use href="#p-ap_beranda"  class="floor tile"/>
+    <use href="#p-dwi_beranda" class="floor tile"/>
+  </g>
+
+  <!-- ── 가구 ───────────────────────────────────────────────────
+       href 는 이 SVG 기준 상대경로다. floorplan.svg 옆에 fp/ 를 두면 된다.
+       (HA: /local/floorplan.svg + /local/fp/*.webp)
+
+       각 <image> 의 x,y,width,height 는 "이 상자 안에 넣어라" 라는 뜻이고,
+       preserveAspectRatio 기본값(xMidYMid meet) 덕에 비율은 알아서 유지된다.
+       위치를 옮기려면 x,y 만 고치면 된다. preview.html 의 "좌표 찍기" 참고. -->
+  <g id="fp-furniture">
+    <!-- 거실. x200 아래로 내려가면 화장실을 침범하므로 소파·TV 는 x200 우측에 둔다 -->
+    <image href="fp/sofa.webp"         x="200" y="180" width="180" height="84"/>
+    <image href="fp/tv-stand.webp"     x="215" y="400" width="150" height="41"/>
+    <!-- 침실. 문 스윙(x445~515, y335~405)을 피해 오른쪽에 옷장 -->
+    <image href="fp/bed.webp"          x="600" y="175" width="130" height="164"/>
+    <image href="fp/wardrobe.webp"     x="690" y="348" width="120" height="47"/>
+    <!-- 주방 -->
+    <image href="fp/fridge.webp"       x="445" y="420" width="80"  height="56"/>
+    <image href="fp/dining-table.webp" x="470" y="490" width="110" height="60"/>
+    <image href="fp/sink-counter.webp" x="445" y="570" width="153" height="60"/>
+    <!-- 작은방. 문 스윙(x620~690, y425~495)을 피해 책상은 오른쪽으로 -->
+    <image href="fp/desk.webp"         x="725" y="425" width="110" height="83"/>
+    <image href="fp/vacuum-dock.webp"  x="810" y="580" width="40"  height="44"/>
+    <!-- 화장실 -->
+    <image href="fp/toilet.webp"       x="75"  y="420" width="42"  height="70"/>
+    <image href="fp/washbasin.webp"    x="135" y="425" width="52"  height="55"/>
+    <!-- 현관 -->
+    <image href="fp/shoe-rack.webp"    x="210" y="462" width="110" height="35"/>
+    <!-- 앞 베란다 -->
+    <image href="fp/plants.webp"       x="95"  y="62"  width="68"  height="73"/>
+    <!-- 뒷베란다 -->
+    <image href="fp/washer.webp"       x="470" y="672" width="64"  height="55"/>
+    <image href="fp/dryer.webp"        x="548" y="672" width="60"  height="55"/>
+  </g>
+
+  <!-- ── 히트영역 + 상태 틴트 ───────────────────────────────── -->
+  <g id="fp-rooms">
+    <use href="#p-ap_beranda"  id="room-ap_beranda"  class="room"/>
+    <use href="#p-geosil"      id="room-geosil"      class="room"/>
+    <use href="#p-cimsil"      id="room-cimsil"      class="room"/>
+    <use href="#p-hwajangsil"  id="room-hwajangsil"  class="room"/>
+    <use href="#p-hyeongwan"   id="room-hyeongwan"   class="room"/>
+    <use href="#p-jubang"      id="room-jubang"      class="room"/>
+    <use href="#p-jageunbang"  id="room-jageunbang"  class="room"/>
+    <use href="#p-dwi_beranda" id="room-dwi_beranda" class="room"/>
+  </g>
+
+  <!-- ── 창 (벽이 끊긴 구간을 얇은 선으로) ──────────────────── -->
+  <g id="fp-windows">
+    <path class="window" d="M115,155 H255"/>   <!-- 거실 ↔ 앞베란다 -->
+    <path class="window" d="M475,155 H790"/>   <!-- 침실 ↔ 앞베란다 -->
+    <path class="window" d="M513,635 H592"/>   <!-- 주방 ↔ 뒷베란다 -->
+    <path class="window" d="M678,635 H812"/>   <!-- 작은방 ↔ 뒷베란다 -->
+  </g>
+
+  <!-- ── 외벽. 하단 x270~305 은 현관문 자리라 비워 둔다 ─────── -->
+  <g id="fp-walls-outer">
+    <path class="wall" d="M60,40 H820"/>
+    <path class="wall" d="M820,40 V405 H860 V770"/>
+    <path class="wall" d="M860,770 H430 V515 H305"/>
+    <path class="wall" d="M260,515 H60 V40"/>
+  </g>
+
+  <!-- ── 내벽 ───────────────────────────────────────────────── -->
+  <g id="fp-walls-inner">
+    <!-- 앞베란다 ↔ 거실·침실 (창 2곳 제외) -->
+    <path class="wall-in" d="M60,155 H115"/>
+    <path class="wall-in" d="M255,155 H475"/>
+    <path class="wall-in" d="M790,155 H820"/>
+
+    <!-- 거실 ↔ 침실. 침실 하단(y405)에서 끝난다.
+         그 아래 x430 은 거실과 주방이 벽 없이 트인 구간이라 아무것도 그리지 않는다 -->
+    <path class="wall-in" d="M430,155 V405"/>
+
+    <!-- 침실 ↔ 주방 (x445~515 침실 문) -->
+    <path class="wall-in" d="M430,405 H445"/>
+    <path class="wall-in" d="M515,405 H860"/>
+
+    <!-- 주방 ↔ 작은방 (y425~495 작은방 문) -->
+    <path class="wall-in" d="M620,405 V425"/>
+    <path class="wall-in" d="M620,495 V635"/>
+
+    <!-- 주방·작은방 ↔ 뒷베란다 (창 2곳 제외) -->
+    <path class="wall-in" d="M430,635 H513"/>
+    <path class="wall-in" d="M592,635 H678"/>
+    <path class="wall-in" d="M812,635 H860"/>
+
+    <!-- 화장실 (y325~395 화장실 문) -->
+    <path class="wall-in" d="M60,310 H200"/>
+    <path class="wall-in" d="M200,310 V325"/>
+    <path class="wall-in" d="M200,395 V515"/>
+
+    <!-- 현관은 벽 없이 거실과 트여 있다. 경계는 fp-thresholds 의 단차선으로만 표시 -->
+  </g>
+
+  <!-- ── 단차 (벽 아님) ─────────────────────────────────────── -->
+  <g id="fp-thresholds">
+    <path class="threshold" d="M200,455 H361 V515"/>   <!-- 현관 ↔ 거실 -->
+  </g>
+
+  <!-- ── 문 (호형) ──────────────────────────────────────────── -->
+  <g id="fp-doors">
+    <path class="door" d="M445,405 V335 A70,70 0 0 1 515,405"/>   <!-- 침실 -->
+    <path class="door" d="M620,425 H690 A70,70 0 0 1 620,495"/>   <!-- 작은방 -->
+    <path class="door" d="M200,325 H130 A70,70 0 0 0 200,395"/>   <!-- 화장실 -->
+    <path class="door" d="M305,515 V470 A45,45 0 0 0 260,515"/>   <!-- 현관 (출입문) -->
+  </g>
+
+  <!-- ── 라벨 ───────────────────────────────────────────────── -->
+  <g id="fp-labels">
+    <text class="label"    x="440" y="98">앞 베란다</text>
+    <text class="label"    x="300" y="240">거실</text>
+    <text class="label"    x="625" y="270">침실</text>
+    <text class="label sm" x="130" y="415">화장실</text>
+    <text class="label sm" x="228" y="487">현관</text>
+    <text class="label"    x="525" y="525">주방</text>
+    <text class="label"    x="740" y="525">작은방</text>
+    <text class="label"    x="645" y="702">뒷베란다</text>
+  </g>
+</svg>

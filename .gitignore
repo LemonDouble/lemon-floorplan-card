@@ -1,0 +1,7 @@
+# gpt-image 원본과 누끼 중간물 (23MB). 재생성 가능하므로 커밋하지 않는다.
+# 빌드에 실제로 필요한 건 fp/*.webp 뿐이다.
+assets/
+
+__pycache__/
+*.pyc
+.venv/
