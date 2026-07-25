@@ -221,7 +221,9 @@ class LemonFloorplanCard extends HTMLElement {
     // 2) device 별 대표 엔티티 + 전체 목록으로 정리
     this._rooms = {};
     for (const [area, devMap] of Object.entries(byArea)) {
-      const override = this._config.rooms?.[area]?.primary;
+      const roomCfg = this._config.rooms?.[area] || {};
+      const override = roomCfg.primary;          // 대표 목록을 통째로 교체
+      const pin = new Set(roomCfg.pin || []);    // 대표에 "추가" (교체가 아니라)
       const primary = [], groups = [];
       let count = 0;
 
@@ -240,6 +242,8 @@ class LemonFloorplanCard extends HTMLElement {
         // 이 device 에서 가장 높은 우선순위 도메인을 찾고, 그 도메인 전부를 대표로
         const top = PRIMARY_PRIORITY.find((d) => ids.some((e) => dom(e) === d));
         if (top) primary.push(...ids.filter((e) => dom(e) === top));
+        // 이 device 에 속한 pin 은 대표 바로 뒤에 붙인다 (에어컨 옆에 무풍·풍량이 오도록)
+        primary.push(...ids.filter((e) => pin.has(e) && !primary.includes(e)));
       }
 
       this._rooms[area] = {

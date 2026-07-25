@@ -23,9 +23,13 @@ exclude_devices:          # 선택 — device_id 또는 device 이름. 통째로
   - "EFM Networks ipTIME AX2004M"      # 센서 13개짜리 공유기 같은 것
 exclude:                  # 선택 — 엔티티 단위
   - sensor.foo
-rooms:                    # 선택 — 대표 엔티티 직접 지정
+rooms:                    # 선택 — 방별 대표 엔티티 조정
   geosil:
-    primary: [climate.geosil_eeokeon, light.geosil_sopadeung]
+    pin:                  # 대표에 "추가". 해당 기기 대표 바로 뒤에 붙는다
+      - switch.geosil_eeokeon_mupung
+      - select.geosil_eeokeon_pungryang
+  cimsil:
+    primary: [...]        # 대표 목록을 통째로 "교체" (pin 은 무시됨)
 ```
 
 > **평면도가 빌드에 내장돼 있다.** `floorplan` 을 안 주면 이 저장소의 평면도를 쓴다.
@@ -131,7 +135,11 @@ climate > light > cover > lock > media_player > fan
 - 2구 벽스위치 → `switch` 두 개 다 노출 (화장실 등 + 환풍기)
 - 온습도 센서 device → 대표 없음. 헤더 요약과 전체보기에만
 
-`rooms.<area_id>.primary` 로 완전히 덮어쓸 수 있다.
+기본 규칙으로 부족할 때:
+
+- `rooms.<area_id>.pin` — 대표에 **추가**한다. 그 엔티티가 속한 기기의 대표
+  바로 뒤에 끼워 넣으므로, 에어컨 타일 옆에 무풍·풍량이 나란히 온다.
+- `rooms.<area_id>.primary` — 대표 목록을 통째로 **교체**한다 (`pin` 은 무시).
 
 `window.loadCardHelpers()` 가 있으면 진짜 HA tile 카드를 쓰고 (도메인별 feature 자동 부착),
 없으면 자체 행 렌더로 폴백한다. 즉 그 API가 사라져도 카드는 죽지 않는다.

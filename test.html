@@ -63,6 +63,10 @@ const ENTITIES = [
   {entity_id:"switch.hwajangsil_hwanpunggi",     device_id:"dev_hwajangsil"},
   // 침실
   {entity_id:"climate.cimsil_byeokgeori_eeokeon",device_id:"dev_cimsil_ac"},
+  {entity_id:"switch.geosil_eeokeon_mupung",           device_id:"dev_geosil_ac"},
+  {entity_id:"switch.cimsil_byeokgeori_eeokeon_mupung",device_id:"dev_cimsil_ac"},
+  {entity_id:"select.cimsil_byeokgeori_eeokeon_pungryang",   device_id:"dev_cimsil_ac"},
+  {entity_id:"select.cimsil_byeokgeori_eeokeon_baram_banghyang", device_id:"dev_cimsil_ac"},
   {entity_id:"light.cimsil_ganjeobdeung",        device_id:"dev_cimsil_light"},
   {entity_id:"fan.zhimi_mb3_e9cc_air_purifier",  device_id:"dev_purifier"},
   // 화장실 / 현관
@@ -85,6 +89,10 @@ const STATES = {
   "lock.0x00158d008b0be468":          S("locked",{friendly_name:"현관 도어락"}),
   "media_player.geosil_seupikeo":     S("idle",{friendly_name:"거실 스피커"}),
   "media_player.cimsil_seupikeo":     S("playing",{friendly_name:"침실 스피커"}),
+  "switch.geosil_eeokeon_mupung":            S("off",{friendly_name:"무풍"}),
+  "switch.cimsil_byeokgeori_eeokeon_mupung": S("on", {friendly_name:"무풍"}),
+  "select.cimsil_byeokgeori_eeokeon_pungryang": S("자동풍",{friendly_name:"풍량", options:["자동풍","미풍","약풍","강풍","터보"]}),
+  "select.cimsil_byeokgeori_eeokeon_baram_banghyang": S("상하",{friendly_name:"바람 방향", options:["고정","상하"]}),
   "sensor.router_download_speed":     S("31.2",{friendly_name:"다운로드 속도"}),
   "sensor.router_upload_speed":       S("8.4", {friendly_name:"업로드 속도"}),
   "sensor.router_packets_sent":       S("99123",{friendly_name:"보낸 패킷"}),
@@ -135,6 +143,12 @@ card.setConfig({
   floorplan: "./floorplan.svg",
   title: "우리집",
   exclude_devices: ["EFM Networks ipTIME AX2004M"],
+  rooms: {
+    geosil: { pin: ["switch.geosil_eeokeon_mupung", "select.geosil_eeokeon_pungryang"] },
+    cimsil: { pin: ["switch.cimsil_byeokgeori_eeokeon_mupung",
+                    "select.cimsil_byeokgeori_eeokeon_pungryang",
+                    "select.cimsil_byeokgeori_eeokeon_baram_banghyang"] },
+  },
   aliases: {
     "ceiling-geosil": "switch.0x385b44fffec08207_top",
     "ceiling-ap-beranda": "switch.0x385b44fffec08207_bottom",
