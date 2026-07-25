@@ -17,6 +17,7 @@ import base64, json, mimetypes, pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
+SRC  = "src/card.js"
 CARD = "lemon-floorplan-card.js"
 PLAN = "floorplan.svg"
 
@@ -46,10 +47,10 @@ def main() -> None:
         sys.exit("참조된 파일이 없습니다:\n  " + "\n  ".join(missing))
 
     # SVG 를 JS 문자열 리터럴로. json.dumps 가 따옴표·개행·백슬래시를 안전하게 이스케이프한다.
-    js = (ROOT / CARD).read_text()
+    js = (ROOT / SRC).read_text()
     marker = 'const EMBEDDED_SVG = ""; /*__FLOORPLAN__*/'
     if marker not in js:
-        sys.exit(f"{CARD} 에서 주입 지점을 못 찾았습니다: {marker}")
+        sys.exit(f"{SRC} 에서 주입 지점을 못 찾았습니다: {marker}")
     js = js.replace(marker, f"const EMBEDDED_SVG = {json.dumps(svg)};")
 
     DIST.mkdir(exist_ok=True)
