@@ -61,6 +61,28 @@ const OBJECT_ON = {
   cover:         (s) => s.state === "open",
 };
 
+/** 실제로 빛을 내는 가구. 켜지면 발광하고, 나머지는 테두리로만 알린다
+ *  (에어컨이 등처럼 환하게 빛나면 어색하다).
+ *
+ *  도메인으로는 못 가른다 — 천장등 7개가 전부 switch 도메인이고, 같은 switch 에
+ *  환풍기와 식물등 스마트플러그도 섞여 있다. 그래서 오브젝트 id 에 박힌
+ *  에셋 이름으로 가른다 (id 는 `o-<에셋>-<번호>` 규칙). */
+const LIGHT_ASSETS = new Set(["ceiling-light", "table-lamp", "floor-lamp", "led-strip"]);
+const assetOf = (id) => (id || "").replace(/^o-/, "").replace(/-\d+$/, "");
+
+/** 조명이 아닌 가구의 테두리 색을 도메인으로 정한다 */
+function toneOf(eid, st) {
+  switch (dom(eid)) {
+    case "climate":       return st.state === "heat" ? "heat" : "cool";
+    case "media_player":  return "media";
+    case "fan":
+    case "humidifier":    return "air";
+    case "lock":                                 // 잠금 해제
+    case "binary_sensor": return "alert";        // 문·창문 열림
+    default:              return "on";           // switch(플러그)·cover·vacuum
+  }
+}
+
 /** 짧게 눌렀을 때 켜고 끌 수 있는 도메인. homeassistant.toggle 이 먹는 것들이다.
  *  lock 은 toggle 서비스가 없어서 따로 처리하고, 나머지(sensor·binary_sensor·vacuum 등)는
  *  토글할 게 없으므로 짧게 눌러도 상세를 연다. */
@@ -367,7 +389,7 @@ class LemonFloorplanCard extends HTMLElement {
       r.setAttribute("class", "hotspot");
       this._wirePress(r, eid);
       layer.appendChild(r);
-      this._objects.push({ img, eid });
+      this._objects.push({ img, eid, light: LIGHT_ASSETS.has(assetOf(img.id)) });
     }
     svg.appendChild(layer);                            // 맨 위
   }
@@ -479,14 +501,15 @@ class LemonFloorplanCard extends HTMLElement {
       else el.removeAttribute("data-tint");
     }
 
-    // 가구 하나하나도 자기 엔티티 상태에 따라 빛낸다
+    // 가구 하나하나도 자기 엔티티 상태를 표시한다.
+    // 조명은 발광, 나머지는 도메인 색 테두리 — data-on 값이 그 구분이다.
     for (const o of this._objects || []) {
       const st = hass.states[o.eid];
       const rule = st && OBJECT_ON[dom(o.eid)];
-      const on = !!(rule && rule(st));
-      if (o.on === on) continue;                       // 안 바뀌었으면 DOM 안 만짐
-      o.on = on;
-      if (on) o.img.setAttribute("data-on", "");
+      const tone = rule && rule(st) ? (o.light ? "light" : toneOf(o.eid, st)) : null;
+      if (o.tone === tone) continue;                   // 안 바뀌었으면 DOM 안 만짐
+      o.tone = tone;
+      if (tone) o.img.setAttribute("data-on", tone);
       else o.img.removeAttribute("data-on");
     }
   }
@@ -658,8 +681,10 @@ class LemonFloorplanCard extends HTMLElement {
         .plan svg .room[data-tint]:hover { fill-opacity: .42; }
         .plan svg .room[data-tint="warm"]  { fill: var(--state-light-active-color, #ffc107); }
         .plan svg .room[data-tint="cool"]  { fill: var(--state-climate-cool-color, #2196f3); }
-        .plan svg .room[data-tint="heat"]  { fill: var(--state-climate-heat-color, #ff8a65); }
-        .plan svg .room[data-tint="media"] { fill: var(--state-media_player-active-color, #7e57c2); }
+        .plan svg .room[data-tint="heat"]  { fill: var(--state-climate-heat-color, #ff6f22); }
+        /* 미디어는 HA 의 --state-media_player-active-color(#03a9f4) 를 쓰지 않는다.
+           냉방색 #2196f3 과 거의 같은 파랑이라 방 색만 보고는 에어컨인지 TV 인지 못 가린다. */
+        .plan svg .room[data-tint="media"] { fill: var(--purple-color, #926bc7); }
 
         /* 엔티티가 연결된 가구: 투명 히트영역이 맨 위에 깔린다 */
         .plan svg .hotspot {
@@ -673,12 +698,27 @@ class LemonFloorplanCard extends HTMLElement {
           fill-opacity: .45;
           transition: fill-opacity var(--hold-ms, 500ms) linear;
         }
-        /* 켜진 기기는 은은하게 빛나게 */
+        /* 켜짐 표시.
+           조명만 실제로 발광시키고, 나머지 기기는 실루엣을 따라 얇은 테두리만 준다.
+           에어컨·세탁기가 등처럼 환하게 빛나면 어색해서 갈랐다.
+           drop-shadow 의 길이는 SVG 사용자 단위(viewBox 920 기준)라 화면 크기가
+           달라져도 굵기 비율이 유지된다 — 모바일에서 따로 손볼 게 없다.
+           같은 그림자를 두 번 겹치는 건 흐릿한 후광 대신 진한 윤곽을 얻으려는 것. */
         .plan svg #fp-furniture image { transition: filter .25s ease; }
         .plan svg #fp-furniture image[data-on] {
-          filter: drop-shadow(0 0 5px var(--state-icon-active-color, #f9a825))
-                  drop-shadow(0 0 10px var(--state-icon-active-color, #f9a825));
+          --fp-tone: var(--state-icon-active-color, #f9a825);
+          filter: drop-shadow(0 0 2px var(--fp-tone)) drop-shadow(0 0 2px var(--fp-tone));
         }
+        /* 조명은 예전 그대로 넓게 발광 */
+        .plan svg #fp-furniture image[data-on="light"] {
+          --fp-tone: var(--state-light-active-color, #ffc107);
+          filter: drop-shadow(0 0 5px var(--fp-tone)) drop-shadow(0 0 10px var(--fp-tone));
+        }
+        .plan svg #fp-furniture image[data-on="cool"]  { --fp-tone: var(--state-climate-cool-color, #2196f3); }
+        .plan svg #fp-furniture image[data-on="heat"]  { --fp-tone: var(--state-climate-heat-color, #ff6f22); }
+        .plan svg #fp-furniture image[data-on="media"] { --fp-tone: var(--purple-color, #926bc7); }
+        .plan svg #fp-furniture image[data-on="air"]   { --fp-tone: var(--state-fan-active-color, #00bcd4); }
+        .plan svg #fp-furniture image[data-on="alert"] { --fp-tone: var(--red-color, #f44336); }
 
         /* 팝업 */
         dialog {

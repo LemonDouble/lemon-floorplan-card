@@ -6,7 +6,7 @@ SVG 평면도 위에서 가구를 눌러 기기를 제어하는 Home Assistant �
 
 - **가구 짧게 누르기** → 켜고 끄기 / **길게 누르기** → more-info
 - **빈 바닥 누르기** → 그 방 기기 목록 팝업
-- 켜진 기기는 오브젝트가 빛나고, 방 전체가 상태 색으로 물든다
+- 켜진 조명은 발광하고, 조명 아닌 기기는 도메인 색 테두리만 두른다. 방 전체도 상태 색으로 물든다
 - 방↔기기 매핑을 설정에 적지 않는다. HA area 레지스트리를 런타임에 읽는다
 
 ---
@@ -166,6 +166,25 @@ fp-hotspots    ← 카드가 런타임 생성. data-entity 있는 가구만 투�
 아래로 깔린다. 그래서 위치만 복사한 투명 rect 를 맨 위에 따로 깐다.
 장식 가구는 rect 가 안 생기므로 클릭이 그대로 방으로 떨어진다.
 
+**켜짐 표시**는 조명과 그 외를 가른다. 조명은 실제로 빛을 내니 넓게 발광시키고
+(`drop-shadow` 5+10), 에어컨·세탁기 같은 건 실루엣을 따라 얇은 테두리만 준다(2+2).
+에어컨이 등처럼 환하게 빛나면 어색해서다.
+
+무엇이 조명인지는 **도메인으로 못 가른다** — 천장등 7개가 전부 `switch` 도메인이고
+같은 `switch` 에 환풍기·식물등 플러그도 섞여 있다. 그래서 오브젝트 id
+(`o-<에셋>-<번호>`)에 박힌 에셋 이름으로 가른다. `src/card.js` 의 `LIGHT_ASSETS`.
+
+```
+light  ceiling-light · table-lamp · floor-lamp · led-strip   앰버 발광
+cool   climate(heat 아님)   파랑     media  media_player   보라
+heat   climate(heat)        주황     air    fan·humidifier 청록
+alert  lock 해제 · binary_sensor 열림  빨강
+on     그 외 (switch 플러그 · cover · vacuum)  앰버 테두리
+```
+
+`drop-shadow` 의 길이는 SVG 사용자 단위(viewBox 920 기준)라 화면 폭이 달라져도
+굵기 비율이 유지된다. 모바일에서 따로 손볼 게 없다.
+
 **방↔기기 매핑**은 `hass.callWS` 로 `config/{area,device,entity}_registry/list` 를
 한 번 읽어 만든다. 엔티티의 area 는 자기 값이 우선이고 없으면 device 것을 물려받는다
 (2구 스위치처럼 방을 걸치는 기기가 엔티티 레벨로 덮어써져 있다).
@@ -233,6 +252,11 @@ IEEE 가 안 박힌 나머지 25개는 그냥 entity_id 를 직접 쓴다. 별�
   있다. `fetch(..., {cache:"no-store"})` 로 처리.
 - **`click` 으로는 길게 누르기를 구현할 수 없다.** more-info 를 연 뒤 `click` 이 또
   날아와 토글까지 된다. `pointerdown/move/up` 으로 직접 짰다.
+- **`--state-media_player-active-color` 는 쓰지 않는다.** 실제 인스턴스에서 재보니
+  `#03a9f4` 인데 `--state-climate-cool-color` 가 `#2196f3` 이라 눈으로 못 가린다.
+  에어컨인지 TV 인지 구분이 안 돼서 미디어만 `--purple-color`(#926bc7) 로 뺐다.
+  HA 상태 색 변수는 추측하지 말고 브라우저에서 `getComputedStyle` 로 직접 읽을 것
+  (로그인 전 `/auth/authorize` 페이지에도 테마가 이미 적용돼 있어 거기서 읽힌다).
 
 ### 검수 렌더 (cairosvg)
 
