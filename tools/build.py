@@ -28,7 +28,12 @@ def main() -> None:
     # SVG 안의 상대경로를 그대로 두고, 에셋은 따로 모아 JS 맵으로 넘긴다.
     # 예전에는 href 를 만날 때마다 data URI 를 박아 넣었는데, 천장등처럼 같은
     # 파일을 7번 쓰면 7벌이 들어가서 1.2MB 가 됐다. 맵으로 빼면 한 벌만 담긴다.
-    used = sorted(set(re.findall(r'href="((?!data:|https?:|#|/)[^"]+)"', svg)))
+    # href 만 보면 안 된다. 커튼처럼 상태에 따라 갈아끼우는 그림은 data-asset-*
+    # 로 걸려 있어서, 이걸 빠뜨리면 맵에 안 담기고 런타임에 상대경로로 남는다.
+    # 그러면 HA 가 모르는 경로에 SPA 폴백으로 index.html 을 200 으로 내줘서
+    # 404 도 없이 그냥 엑박이 된다.
+    used = sorted(set(re.findall(
+        r'(?:href|data-asset-[a-z-]+)="((?!data:|https?:|#|/)[^"]+)"', svg)))
     missing = [r for r in used if not (ROOT / r).is_file()]
     if missing:
         sys.exit("참조된 파일이 없습니다:\n  " + "\n  ".join(missing))

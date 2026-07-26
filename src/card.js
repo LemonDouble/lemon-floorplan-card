@@ -119,7 +119,9 @@ const OBJECT_ON = {
   ...ACTIVE_RULES,
   binary_sensor: (s) => s.state === "on",        // 문·창문 열림
   lock:          (s) => s.state === "unlocked",
-  cover:         (s) => s.state === "open",
+  // cover 는 일부러 뺐다. 커튼은 열린 것도 정상 상태라 발광시키면 늘 빛나고,
+  // 그러면 "켜짐" 과 구분이 안 된다. 대신 열림/닫힘 그림을 갈아끼운다
+  // (SVG 의 data-asset-closed, 아래 _paint).
 };
 
 /** 실제로 빛을 내는 가구. 켜지면 발광하고, 나머지는 테두리로만 알린다
@@ -220,10 +222,17 @@ async function mountPlan(container, config) {
   }
   if (!container.querySelector("svg")) throw new Error("평면도에서 <svg> 를 찾지 못했습니다.");
   const XLINK = "http://www.w3.org/1999/xlink";
+  const done = (p) => /^(?:[a-z]+:|\/\/|\/)/i.test(p);           // 절대 URL·data: 는 그대로
+  const abs = (p) => EMBEDDED_ASSETS[p] ?? new URL(p, base ?? location.href).href;
   for (const el of container.querySelectorAll("image")) {
+    // 상태에 따라 갈아끼울 대체 에셋(커튼 닫힘 등)도 같이 절대화해 둔다.
+    // href 보다 먼저 해야 한다 — 아래 continue 에 걸리면 여기까지 못 온다.
+    const alt = el.getAttribute("data-asset-closed");
+    if (alt && !done(alt)) el.setAttribute("data-asset-closed", abs(alt));
+
     const href = el.getAttribute("href") ?? el.getAttributeNS(XLINK, "href");
-    if (!href || /^(?:[a-z]+:|\/\/|\/)/i.test(href)) continue;   // 절대 URL·data: 는 그대로
-    el.setAttribute("href", EMBEDDED_ASSETS[href] ?? new URL(href, base ?? location.href).href);
+    if (!href || done(href)) continue;
+    el.setAttribute("href", abs(href));
     el.removeAttributeNS(XLINK, "href");
   }
 }
@@ -452,7 +461,12 @@ class LemonFloorplanCard extends HTMLElement {
       r.setAttribute("class", "hotspot");
       this._wirePress(r, eid);
       layer.appendChild(r);
-      this._objects.push({ img, eid, light: LIGHT_ASSETS.has(assetOf(img.id)) });
+      this._objects.push({
+        img, eid,
+        light: LIGHT_ASSETS.has(assetOf(img.id)),
+        openHref: img.getAttribute("href"),                    // mountPlan 이 절대화한 값
+        closedHref: img.getAttribute("data-asset-closed"),     // 없으면 null
+      });
     }
     svg.appendChild(layer);                            // 맨 위
   }
@@ -554,6 +568,13 @@ class LemonFloorplanCard extends HTMLElement {
     // 조명은 발광, 나머지는 도메인 색 테두리 — data-on 값이 그 구분이다.
     for (const o of this._objects || []) {
       const st = hass.states[o.eid];
+
+      // 열림/닫힘 그림이 따로 있는 것(커튼)은 발광 대신 그림을 갈아끼운다
+      if (o.closedHref) {
+        const href = st?.state === "closed" ? o.closedHref : o.openHref;
+        if (o.href !== href) { o.href = href; o.img.setAttribute("href", href); }
+      }
+
       const rule = st && OBJECT_ON[dom(o.eid)];
       const tone = rule && rule(st) ? (o.light ? "light" : toneOf(o.eid, st)) : null;
       if (o.tone === tone) continue;                   // 안 바뀌었으면 DOM 안 만짐

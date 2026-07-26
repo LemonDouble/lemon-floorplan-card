@@ -203,8 +203,22 @@ light  ceiling-light · table-lamp · floor-lamp · led-strip   앰버 발광
 cool   climate(heat 아님)   파랑     media  media_player   보라
 heat   climate(heat)        주황     air    fan·humidifier 청록
 alert  lock 해제 · binary_sensor 열림  빨강
-on     그 외 (switch 플러그 · cover · vacuum)  앰버 테두리
+on     그 외 (switch 플러그 · vacuum)  앰버 테두리
 ```
+
+**`cover` 는 일부러 뺐다.** 커튼은 열린 것도 정상 상태라 발광시키면 늘 빛나고,
+그러면 "켜짐" 과 구분이 안 된다. 대신 **열림/닫힘 그림을 갈아끼운다.**
+
+```svg
+<image href="fp/curtain.webp" data-asset-closed="fp/curtain-closed.webp" …/>
+```
+
+`data-asset-closed` 가 있으면 카드가 상태에 따라 `href` 를 바꾼다(`closed` 일 때
+대체 그림). 다른 가구도 같은 방식을 쓸 수 있다.
+
+> `tools/build.py` 는 **`href` 와 `data-asset-*` 를 함께 스캔**해 에셋 맵을 만든다.
+> `href` 만 보면 대체 그림이 맵에 안 담기고 상대경로로 남아, HA 가 SPA 폴백으로
+> `index.html` 을 200 으로 내주는 바람에 404 도 없이 엑박이 된다([§6](#svg--브라우저)).
 
 `drop-shadow` 의 길이는 SVG 사용자 단위(viewBox 920 기준)라 화면 폭이 달라져도
 굵기 비율이 유지된다. 모바일에서 따로 손볼 게 없다.

@@ -35,9 +35,20 @@ ITEMS = {
                    "laid on the desktop, all seen from directly above",
 
     # ── HA 에 등록된 기기들 ────────────────────────────────────────────────
+    # curtain 은 "열린" 모습이다 (양끝에 천이 뭉치고 가운데는 레일만).
+    # 카드가 cover 상태에 따라 이 둘을 갈아끼우므로 폭·굵기 비율이 서로 맞아야 한다.
     "curtain":     "a pair of window curtains seen from directly above: a straight curtain rail "
                    "with two gathered fabric bundles at each end and a soft wavy fabric line "
                    "running between them, drawn as a long thin horizontal element",
+    # 색을 안 박으면 거의 순백으로 그려져 누끼 3단계가 천에 구멍을 낸다
+    # (실측 결과 피사체 순수 배경색 75.5%). 열린 커튼의 실제 평균색 #bcb8ae 로 맞춘다.
+    "curtain-closed":"a pair of window curtains fully CLOSED, seen from directly above: a straight "
+                   "curtain rail completely covered by dense soft fabric gathers running "
+                   "continuously along its ENTIRE length - evenly spaced vertical pleat lines "
+                   "from end to end, with NO gap and NO bare rail visible anywhere in the middle. "
+                   "The fabric is a WARM LIGHT GREY-BEIGE, around #bcb8ae - clearly NOT white and "
+                   "NOT cream, distinctly darker than the background - with a thin darker outline. "
+                   "Drawn as a long thin horizontal element, at least 12 times wider than tall",
     "speaker":     "a small round smart speaker seen from directly above - a fabric-covered "
                    "circular puck with a subtle ring on top",
     # 주의: "circular grille" 같은 말을 넣으면 실외기(condenser)가 나온다.

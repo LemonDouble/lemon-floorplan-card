@@ -145,7 +145,7 @@
     <image id="o-plant-shelf-1" href="fp/plant-shelf.webp" x="378.3" y="45.2" width="84.6" height="40.4"/>
     <image id="o-ac-outdoor-1" href="fp/ac-outdoor.webp" x="460.9" y="43.5" width="85.1" height="63.8"/>
     <image id="o-ceiling-light-2" href="fp/ceiling-light.webp" data-entity="@ceiling-geosil" x="270.5" y="285.9" width="36" height="36"/>
-    <image id="o-curtain-1" href="fp/curtain.webp" data-entity="cover.geosil_keoteun" x="91.1" y="155.8" width="309.7" height="16.7"/>
+    <image id="o-curtain-1" href="fp/curtain.webp" data-asset-closed="fp/curtain-closed.webp" data-entity="cover.geosil_keoteun" x="91.1" y="155.8" width="309.7" height="16.7"/>
     <image id="o-table-lamp-1" href="fp/table-lamp.webp" data-entity="light.geosil_sopadeung" x="129.5" y="175.8" width="27" height="27"/>
     <image id="o-led-strip-1" href="fp/led-strip.webp" data-entity="light.yeelink_strip6_3ebe_light" x="491.5" y="581" width="94" height="7.9" transform="rotate(-90 538.5 585)"/>
     <image id="o-tv-stand-1" href="fp/tv-stand.webp" data-entity="media_player.geosil_tv_adb" x="339.8" y="221.9" width="134.3" height="37.1" transform="rotate(-90 407 240.5)"/>
@@ -156,7 +156,7 @@
     <image id="o-sofa-1" href="fp/sofa.webp" x="30.5" y="207.4" width="132.7" height="61.7" transform="rotate(-90 96.9 238.2)"/>
     <image id="o-table-white-1" href="fp/table-white.webp" x="468.5" y="564.7" width="84.8" height="48.3" transform="rotate(-90 510.9 588.8)"/>
     <image id="o-ceiling-light-3" href="fp/ceiling-light.webp" data-entity="switch.cimsil_seuwici" x="567.9" y="254.2" width="34" height="34"/>
-    <image id="o-curtain-2" href="fp/curtain.webp" data-entity="cover.cimsil_keoteun" x="443.9" y="151.7" width="341.7" height="26.6"/>
+    <image id="o-curtain-2" href="fp/curtain.webp" data-asset-closed="fp/curtain-closed.webp" data-entity="cover.cimsil_keoteun" x="443.9" y="151.7" width="341.7" height="26.6"/>
     <image id="o-ac-wall-1" href="fp/ac-wall.webp" data-entity="climate.cimsil_byeokgeori_eeokeon" x="398" y="211.4" width="95.1" height="21" transform="rotate(-90 445.6 221.9)"/>
     <image id="o-speaker-2" href="fp/speaker.webp" data-entity="media_player.cimsil_seupikeo" x="785.8" y="248.4" width="24" height="24"/>
     <image id="o-projector-1" href="fp/projector.webp" data-entity="media_player.lg_webos_bimpeurojegteo" x="515.3" y="262.6" width="38" height="28" transform="rotate(-90 534.3 276.6)"/>
