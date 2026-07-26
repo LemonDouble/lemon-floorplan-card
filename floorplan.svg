@@ -70,6 +70,16 @@
     }
     .label.sm { font-size: 19px; }
 
+    /* 라벨은 fp-labels(가구보다 위) 라 가구에 가려지진 않지만, 조명이 켜지면 그
+       발광 위에 글자가 놓여 대비가 죽는다. 바닥색 외곽선을 먼저 깔아 글자를
+       띄운다 — 지도 라벨에서 쓰는 halo 다. paint-order 가 없으면 stroke 가
+       글자를 덮어 뭉개므로 반드시 stroke 를 fill 보다 먼저 칠하게 둘 것. */
+    .label, .env {
+      paint-order: stroke fill;
+      stroke: var(--fp-floor); stroke-opacity: .85;
+      stroke-width: 4.5px; stroke-linejoin: round;
+    }
+
     /* 방 이름 아래 온·습도. 카드가 런타임에 채운다 (data-area 가 붙은 라벨만).
        방 이름보다 한 단계 작고 흐리게 — 평면도를 읽는 데 방해되면 안 된다. */
     .env {
@@ -252,13 +262,16 @@
 
   <!-- ── 라벨 ───────────────────────────────────────────────── -->
   <g id="fp-labels">
-    <text class="label"    data-area="ap_beranda"  x="440" y="98">앞 베란다</text>
-    <text class="label"    data-area="geosil"      x="300" y="240">거실</text>
-    <text class="label"    data-area="cimsil"      x="625" y="270">침실</text>
-    <text class="label sm" data-area="hwajangsil"  x="130" y="415">화장실</text>
-    <text class="label sm" data-area="hyeongwan"   x="228" y="487">현관</text>
+    <!-- 좌표는 방 중앙이 아니라 "가구 사이 빈 바닥" 에 손으로 맞춘 값이다.
+         온습도 줄이 라벨 아래 21px 에 붙으므로 두 줄이 함께 들어갈 자리라야 한다.
+         가구를 크게 옮기면 여기도 다시 맞출 것. 옆 주석이 그때의 근거다. -->
+    <text class="label"    data-area="ap_beranda"  x="225" y="88">앞 베란다</text>   <!-- 선반(~134)과 화분(317~) 사이 -->
+    <text class="label"    data-area="geosil"      x="240" y="228">거실</text>       <!-- 소파(~164)와 TV장(340~) 사이, 천장등 발광 위 -->
+    <text class="label"    data-area="cimsil"      x="545" y="224">침실</text>       <!-- 벽걸이에어컨(~493)과 공기청정기(620~) 사이 -->
+    <text class="label sm" data-area="hwajangsil"  x="150" y="385">화장실</text>     <!-- 세면대(~113)와 제습기(198~) 사이 -->
+    <text class="label sm" data-area="hyeongwan"   x="228" y="472">현관</text>       <!-- 도어락(y492~) 위 -->
     <text class="label"    data-area="jubang"      x="525" y="525">주방</text>
-    <text class="label"    data-area="jageunbang"  x="740" y="525">작은방</text>
-    <text class="label"    data-area="dwi_beranda" x="645" y="702">뒷베란다</text>
+    <text class="label"    data-area="jageunbang"  x="740" y="553">작은방</text>     <!-- 옷장(y~533) 아래, 청소기독(x~673) 오른쪽 -->
+    <text class="label"    data-area="dwi_beranda" x="700" y="730">뒷베란다</text>   <!-- 천장등(y~695) 아래, 세탁기(x796~) 왼쪽 -->
   </g>
 </svg>
