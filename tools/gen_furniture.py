@@ -2,7 +2,7 @@
 """
 평면도용 가구 에셋을 gpt-image-2 로 생성한다.
 
-  uv run --with openai gen_furniture.py [--quality low|medium|high] [항목...]
+  uv run --with openai python gen_furniture.py [--quality low|medium|high] [항목...]
 
 - 항목을 안 주면 ITEMS 전체를 병렬로 생성한다.
 - 흰 배경으로 뽑고, 누끼는 스킬의 cutout.py 로 따로 딴다
@@ -35,13 +35,11 @@ ITEMS = {
                    "laid on the desktop, all seen from directly above",
 
     # ── HA 에 등록된 기기들 ────────────────────────────────────────────────
-    # curtain 은 "열린" 모습이다 (양끝에 천이 뭉치고 가운데는 레일만).
-    # 카드가 cover 상태에 따라 이 둘을 갈아끼우므로 폭·굵기 비율이 서로 맞아야 한다.
-    "curtain":     "a pair of window curtains seen from directly above: a straight curtain rail "
-                   "with two gathered fabric bundles at each end and a soft wavy fabric line "
-                   "running between them, drawn as a long thin horizontal element",
+    # 커튼 에셋은 이 한 폭뿐이다. 카드가 런타임에 좌우 두 폭으로 복제하고 폭만
+    # 늘렸다 줄였다 하므로, 그림은 "빈틈없이 닫힌" 모습이어야 한다
+    # (넓으면 펼쳐진 천, 좁으면 뭉친 천으로 읽힌다).
     # 색을 안 박으면 거의 순백으로 그려져 누끼 3단계가 천에 구멍을 낸다
-    # (실측 결과 피사체 순수 배경색 75.5%). 열린 커튼의 실제 평균색 #bcb8ae 로 맞춘다.
+    # (실측 결과 피사체 순수 배경색 75.5%). 실제 평균색 #bcb8ae 로 맞춘다.
     "curtain-panel":"a pair of window curtains fully CLOSED, seen from directly above: a straight "
                    "curtain rail completely covered by dense soft fabric gathers running "
                    "continuously along its ENTIRE length - evenly spaced vertical pleat lines "
@@ -183,8 +181,7 @@ def main() -> None:
     ap.add_argument("items", nargs="*", help="비우면 전체")
     a = ap.parse_args()
 
-    todo = {k: ITEMS[k] for k in (a.items or ITEMS)} if not a.items else \
-           {k: ITEMS[k] for k in a.items if k in ITEMS}
+    todo = {k: ITEMS[k] for k in (a.items or ITEMS) if k in ITEMS}
     if not todo:
         sys.exit(f"알 수 없는 항목입니다. 가능: {', '.join(ITEMS)}")
 

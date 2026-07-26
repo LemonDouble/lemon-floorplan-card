@@ -125,7 +125,6 @@ Object.assign(STATES, {
   "media_player.jubang_seupikeo":     S("idle",{friendly_name:"주방 스피커"}),
   "humidifier.ldh_7700_dehumidifier": S("on", {friendly_name:"제습기"}),
   "humidifier.xiaomi_p3_6236_humidifier": S("off",{friendly_name:"가습기"}),
-  "sensor.air_detector":              S("612",{friendly_name:"CO2"}),
   "vacuum.enteopeuraijeu":            S("docked",{friendly_name:"로봇청소기"}),
   "sensor.lemon_weight":              S("70.1",{friendly_name:"몸무게"}),
   "sensor.setaggi_washer_machine_state": S("stop",{friendly_name:"세탁기"}),
@@ -144,6 +143,14 @@ Object.assign(STATES, {
 });
 STATES["sensor.geosil_onseubdo_senseo_temperature_2"].attributes.device_class = "temperature";
 STATES["sensor.geosil_onseubdo_senseo_temperature_2"].state = "28.3";
+
+// 공기질. 라벨·단위·등급은 device_class 로 정해지므로 이게 없으면 줄 자체가 안 생긴다.
+// 값은 등급이 섞이게 골랐다 — CO2 좋음(색 없음) / PM2.5 주의 / PM10 보통.
+Object.assign(STATES, {
+  "sensor.air_detector":      S("612", {friendly_name:"CO2",   unit_of_measurement:"ppm",   device_class:"carbon_dioxide"}),
+  "sensor.air_detector_pm25": S("42",  {friendly_name:"PM2.5", unit_of_measurement:"㎍/㎥", device_class:"pm25"}),
+  "sensor.air_detector_pm10": S("58",  {friendly_name:"PM10",  unit_of_measurement:"㎍/㎥", device_class:"pm10"}),
+});
 const calls = [];
 const hass = {
   states: STATES,
@@ -161,6 +168,7 @@ card.setConfig({
   floorplan: "./floorplan.svg",
   title: "우리집",
   exclude_devices: ["EFM Networks ipTIME AX2004M"],
+  air: ["sensor.air_detector", "sensor.air_detector_pm25", "sensor.air_detector_pm10"],
   rooms: {
     geosil: { pin: ["switch.geosil_eeokeon_mupung", "select.geosil_eeokeon_pungryang"],
               env: ["sensor.geosil_onseubdo_senseo_temperature_2",
@@ -198,8 +206,7 @@ window.__setState = (eid, st) => {
   card.hass = { ...hass, states: { ...STATES } };
 };
 </script>
-</body>
-</html>
+
 <script type="module">
 // 카드 편집기 하네스: HA 가 하는 일(setConfig + config-changed 수신)을 흉내낸다
 const ed = document.createElement("lemon-floorplan-card-editor");
@@ -213,3 +220,5 @@ ed.setConfig(live);
 window.__editor = ed;
 window.__liveConfig = () => live;
 </script>
+</body>
+</html>
