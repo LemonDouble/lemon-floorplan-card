@@ -252,6 +252,13 @@ IEEE 가 안 박힌 나머지 25개는 그냥 entity_id 를 직접 쓴다. 별�
   있다. `fetch(..., {cache:"no-store"})` 로 처리.
 - **`click` 으로는 길게 누르기를 구현할 수 없다.** more-info 를 연 뒤 `click` 이 또
   날아와 토글까지 된다. `pointerdown/move/up` 으로 직접 짰다.
+- **`showModal()` 한 `dialog` 는 top layer 로 올라가 `.plan` 의 컨테이너 밖이 된다.**
+  팝업 안에 `@container` 를 써놨는데 `container-type` 이 `.plan` 에만 있어서 질의가
+  걸릴 데가 없었다. 조건이 **영영 거짓**이라 폰에서도 2열이 유지됐고 팝업이 잘렸다.
+  `.sheet` 에 `container-type: inline-size` 를 따로 세워야 한다.
+- **`grid-template-columns: 1fr` 은 내용보다 작아지지 않는다.** `1fr` = `minmax(auto,1fr)`
+  라 긴 기기 이름 하나가 열 폭을 밀어내고 그리드가 부모 밖으로 나간다.
+  좁은 곳에 넣을 그리드는 `minmax(0, 1fr)` 로 쓸 것.
 - **`--state-media_player-active-color` 는 쓰지 않는다.** 실제 인스턴스에서 재보니
   `#03a9f4` 인데 `--state-climate-cool-color` 가 `#2196f3` 이라 눈으로 못 가린다.
   에어컨인지 TV 인지 구분이 안 돼서 미디어만 `--purple-color`(#926bc7) 로 뺐다.
@@ -322,6 +329,19 @@ python3 -m http.server 8899
 
 브라우저 콘솔에서 `__card`, `__editor`, `__liveConfig()`, `__setState(eid, state)`
 로 조작할 수 있다.
+
+> **`src/card.js` 를 고쳤는데 화면이 그대로면 모듈 캐시다.** 새로고침으로는 안 빠진다.
+> `Cache-Control: no-store` 를 붙인 서버로 띄우거나, `<script src>` 뒤에 `?cb=<시각>` 을
+> 붙인 사본을 만들어 열 것. 고친 CSS 가 반영됐는지는
+> `__card.shadowRoot.querySelector("style").textContent.includes("찾는 문자열")` 로 확인.
+
+**모바일 폭 검증** — 팝업이 가로로 삐져나가는지는 뷰포트를 줄이는 대신 `dialog`
+의 `style.width` 를 직접 강제하면 한 번에 여러 폭을 잴 수 있다.
+
+```js
+for (const el of __card.shadowRoot.querySelectorAll("dialog *"))
+  if (el.scrollWidth > el.clientWidth + 1) console.log(el.className, el.scrollWidth, el.clientWidth);
+```
 
 **성능** — `set hass` 는 시스템 전체 상태 변화마다 불린다. 방마다 상태 서명을
 캐시해 바뀐 방만 DOM 을 건드린다. (검증: 상태 변화 없이 `hass` 두 번 재주입 →

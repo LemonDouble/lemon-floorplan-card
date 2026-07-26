@@ -727,7 +727,11 @@ class LemonFloorplanCard extends HTMLElement {
           background: var(--card-background-color, #fff); color: var(--primary-text-color);
         }
         dialog::backdrop { background: rgba(0,0,0,.5); }
-        .sheet { display: flex; flex-direction: column; max-height: 84vh; }
+        /* 팝업 폭에 맞춰 열 수를 바꿔야 하는데, dialog 는 showModal 로 최상위 레이어에
+           올라가 .plan 바깥에 있다. 그래서 .plan 의 컨테이너를 못 쓴다 —
+           여기서 컨테이너를 따로 세워야 아래 @container 가 비로소 걸린다. */
+        .sheet { display: flex; flex-direction: column; max-height: 84vh;
+                 container-type: inline-size; }
         .sheet header {
           display: flex; align-items: baseline; gap: 10px; padding: 18px 18px 14px;
           border-bottom: 1px solid var(--divider-color, #e0e0e0);
@@ -742,8 +746,13 @@ class LemonFloorplanCard extends HTMLElement {
         .sheet header button:hover { background: var(--secondary-background-color, #eee); }
 
         .body { overflow-y: auto; padding: 14px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        @container (max-width: 380px) { .grid { grid-template-columns: 1fr; } }
+        /* 1fr 은 minmax(auto,1fr) 이라 칸이 내용의 min-content 아래로 안 줄어든다.
+           긴 기기 이름 하나가 열을 밀어내 그리드가 팝업 밖으로 삐져나갔다.
+           minmax(0,1fr) 이라야 줄어들면서 안에서 말줄임된다. */
+        .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+        /* 폰은 전부 1열. 2열을 쓰려면 한 칸이 200px 은 돼야 하는데(본문 여백 28 + 간격 8),
+           440px 이하에서는 그게 안 나온다. HA 기본 대시보드도 폰에서는 타일이 한 줄이다. */
+        @container (max-width: 440px) { .grid { grid-template-columns: minmax(0, 1fr); } }
         .sub { font: 500 12px/1 var(--ha-font-family-body, system-ui, sans-serif);
                letter-spacing: .04em; text-transform: uppercase;
                color: var(--secondary-text-color); padding: 4px 2px 8px; }
