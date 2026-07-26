@@ -285,8 +285,16 @@ const CARD_CSS = `
     overflow: hidden;
   }
   .card { padding: 8px; }
+  /* 제목과 실외 온습도가 한 줄을 나눠 쓴다. 실외를 평면도 위에 두는 것은 실내
+     온도를 읽기 전에 기준이 필요해서다 — 방이 26℃ 라는 사실만으로는 창을 열지
+     말지 알 수 없고, 바깥이 몇 도인지를 알아야 판단이 선다. */
+  .head { display: flex; align-items: baseline; gap: 10px; padding: 8px 8px 4px; }
   .title { font: 500 16px/1.4 var(--ha-font-family-body, system-ui, sans-serif);
-           color: var(--primary-text-color); padding: 8px 8px 4px; }
+           color: var(--primary-text-color); }
+  .outdoor { margin-inline-start: auto; font-size: 12px;
+             color: var(--secondary-text-color); }
+  .outdoor:empty { display: none; }
+  .outdoor::before { content: "바깥 "; opacity: .7; }
   .plan { position: relative; container-type: inline-size; }
   .plan svg { width: 100%; height: auto; display: block; }
   .err { padding: 16px; color: var(--error-color, #db4437);
@@ -469,6 +477,7 @@ class LemonFloorplanCard extends HTMLElement {
     this._demote = new Set(this._config.demote || []);
     this._ready = false;
     this._sig = {};
+    this._outdoorTxt = undefined;      // 아래에서 DOM 을 버리므로 캐시도 함께 버린다
     this.shadowRoot.innerHTML = "";
   }
 
@@ -729,6 +738,16 @@ class LemonFloorplanCard extends HTMLElement {
     this._paintObjects();
     this._paintEnvLabels();
     this._paintAir();
+    this._paintOutdoor();
+  }
+
+  _paintOutdoor() {
+    const el = this.shadowRoot.querySelector(".outdoor");
+    if (!el) return;
+    const txt = this._outdoorSummary();
+    if (this._outdoorTxt === txt) return;
+    this._outdoorTxt = txt;
+    el.textContent = txt;
   }
 
   _paintRooms() {
@@ -941,6 +960,32 @@ class LemonFloorplanCard extends HTMLElement {
   }
 
   /**
+   * 실외 온·습도. 방 라벨과 같은 문법으로 맞춘다.
+   *
+   * weather 엔티티는 상태가 "맑음/흐림" 이고 온·습도는 속성에 들어 있다.
+   * 실외 온도계를 따로 두었다면 sensor 를 배열로 적어도 된다
+   * (rooms.<area>.env 와 같은 방식).
+   */
+  _outdoorSummary() {
+    const cfg = this._config.outdoor;
+    if (!cfg || !this._hass) return "";
+    const out = [];
+    for (const eid of Array.isArray(cfg) ? cfg : [cfg]) {
+      const st = this._hass.states[eid];
+      if (!st) continue;
+      if (dom(eid) === "weather") {
+        const { temperature: t, humidity: h, temperature_unit: unit } = st.attributes;
+        if (Number.isFinite(t)) out.push(`${round1(t)}${unit || "°C"}`);
+        if (Number.isFinite(h)) out.push(`${round1(h)}%`);
+      } else {
+        const v = parseFloat(st.state);
+        if (Number.isFinite(v)) out.push(`${round1(v)}${st.attributes.unit_of_measurement || ""}`);
+      }
+    }
+    return out.join(" · ");
+  }
+
+  /**
    * 커튼을 좌우 두 폭으로 갈라 실제로 걷히게 만든다.
    *
    * 열림·닫힘 그림 두 장을 갈아끼워도 봤는데, 작은 크기에서는 한쪽이 커튼봉,
@@ -1072,7 +1117,10 @@ class LemonFloorplanCard extends HTMLElement {
       <style>${CARD_CSS}</style>
 
       <ha-card class="card">
-        ${this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : ""}
+        ${this._config.title || this._config.outdoor ? `<div class="head">
+          ${this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : ""}
+          <div class="outdoor"></div>
+        </div>` : ""}
         <div class="plan"></div>
         <div class="air"></div>
       </ha-card>

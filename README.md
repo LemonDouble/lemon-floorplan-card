@@ -49,6 +49,7 @@ Dashboards → 우상단 메뉴 → Resources 에서 `/local/lemon-floorplan-car
 | `room_tint` | 방 색을 정하는 기준. `temperature`(기본) / `device` / `off` |
 | `temp_bands` | 온도 구간 경계(℃). 기본 `{cold: 18, cool: 22, warm: 26, hot: 29}` |
 | `air` | 평면도 아래 공기질 줄에 놓을 엔티티 목록 |
+| `outdoor` | 카드 제목 옆에 실외 온·습도 표시. `weather` 엔티티 하나 또는 센서 목록 |
 | `rooms.<area>.pin` | 방 팝업 "자주 쓰는 것" 에 **추가** |
 | `rooms.<area>.primary` | "자주 쓰는 것" 을 통째로 **교체** (`pin` 무시) |
 | `rooms.<area>.env` | 그 방의 대표 온·습도 센서를 못박습니다 (아래 주의) |
@@ -58,6 +59,7 @@ Dashboards → 우상단 메뉴 → Resources 에서 `/local/lemon-floorplan-car
 type: custom:lemon-floorplan-card
 room_tint: temperature
 air: [sensor.air_co2, sensor.air_pm25, sensor.air_pm10]
+outdoor: weather.forecast_home     # 센서를 쓴다면 [sensor.out_temp, sensor.out_humidity]
 exclude_devices:
   - 공유기                       # device 이름 또는 id
 demote:
@@ -79,6 +81,10 @@ rooms:
 전에는 알 수 없기 때문입니다. **쾌적 구간은 일부러 칠하지 않습니다** — 늘 물들어
 있으면 경고가 묻힙니다. 경계는 `temp_bands` 로 옮길 수 있고, 온습도 센서가 없는 방은
 칠하지 않습니다. `room_tint: device` 로 하면 켜진 기기 종류로 칠합니다.
+
+`outdoor` 를 함께 적으면 제목 옆에 실외 온·습도가 붙습니다. 방이 26℃ 라는 사실만으로는
+창을 열지 말지 알 수 없고 바깥이 몇 도인지를 알아야 판단이 서기 때문에, 평면도를 보기
+전에 눈에 들어오는 자리에 둡니다.
 
 ### 공기질
 

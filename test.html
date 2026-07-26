@@ -144,6 +144,12 @@ Object.assign(STATES, {
 STATES["sensor.geosil_onseubdo_senseo_temperature_2"].attributes.device_class = "temperature";
 STATES["sensor.geosil_onseubdo_senseo_temperature_2"].state = "28.3";
 
+// 실외. weather 는 상태가 "맑음/흐림" 이고 온·습도는 속성에 들어 있다.
+Object.assign(STATES, {
+  "weather.forecast_jib": S("partlycloudy",
+    {friendly_name:"집 날씨", temperature:26.4, humidity:71, temperature_unit:"°C"}),
+});
+
 // 공기질. 라벨·단위·등급은 device_class 로 정해지므로 이게 없으면 줄 자체가 안 생긴다.
 // 값은 등급이 섞이게 골랐다 — CO2 좋음(색 없음) / PM2.5 주의 / PM10 보통.
 Object.assign(STATES, {
@@ -169,6 +175,7 @@ card.setConfig({
   title: "우리집",
   exclude_devices: ["EFM Networks ipTIME AX2004M"],
   air: ["sensor.air_detector", "sensor.air_detector_pm25", "sensor.air_detector_pm10"],
+  outdoor: "weather.forecast_jib",
   rooms: {
     geosil: { pin: ["switch.geosil_eeokeon_mupung", "select.geosil_eeokeon_pungryang"],
               env: ["sensor.geosil_onseubdo_senseo_temperature_2",
