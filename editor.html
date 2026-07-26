@@ -72,14 +72,18 @@
 </div>
 
 <script type="module">
+// 좌표·판정은 카드와 같은 함수를 쓴다. 두 벌로 두면 한쪽만 고쳐져
+// "편집기에서 잡히는 위치" 와 "카드에서 눌리는 위치" 가 어긋난다.
+import { readBox, writeBox, boxHit, toViewBox, round1 } from "./src/card.js";
+
 const stage = document.getElementById("stage");
 const listEl = document.getElementById("list");
 const out = document.getElementById("out");
 const status = document.getElementById("status");
 
-let svg, items = [], sel = null, initial = null;
-
-const num = (el, a, d = 0) => parseFloat(el.getAttribute(a) ?? d);
+// 위치는 DOM(<image> 속성)이 진실이다. items 는 el 과 표시용 이름만 들고 있고,
+// 좌표가 필요하면 그때그때 readBox 로 읽는다.
+let svg, items = [], sel = null, initial = [];
 
 // no-store: 같은 origin 에서 예전에 다른 floorplan.svg 를 서빙했다면 캐시가 물린다.
 // (실제로 dist 빌드본이 캐시돼서 href 가 data URI 로 나오는 일이 있었다)
@@ -93,16 +97,9 @@ fetch("floorplan.svg", { cache: "no-store" }).then(r => r.text()).then(txt => {
   items = [...svg.querySelectorAll("#fp-furniture image")].map(el => {
     el.style.pointerEvents = "all";
     el.style.cursor = "move";
-    const m = /rotate\(\s*(-?[\d.]+)/.exec(el.getAttribute("transform") || "");
-    return {
-      el,
-      name: (el.getAttribute("href") || "").split("/").pop().replace(/\.\w+$/, ""),
-      x: num(el, "x"), y: num(el, "y"),
-      w: num(el, "width"), h: num(el, "height"),
-      r: m ? parseFloat(m[1]) : 0,
-    };
+    return { el, name: (el.getAttribute("href") || "").split("/").pop().replace(/\.\w+$/, "") };
   });
-  initial = structuredClone(items.map(({ el, ...v }) => v));
+  initial = items.map(it => readBox(it.el));
 
   const box = document.createElementNS(svg.namespaceURI, "rect");
   box.setAttribute("class", "sel-box");
@@ -119,33 +116,14 @@ fetch("floorplan.svg", { cache: "no-store" }).then(r => r.text()).then(txt => {
   status.textContent = `가구 ${items.length}개`;
 });
 
-// 화면 좌표 -> viewBox 좌표
-function toVB(e) {
-  const p = svg.createSVGPoint();
-  p.x = e.clientX; p.y = e.clientY;
-  return p.matrixTransform(svg.getScreenCTM().inverse());
-}
-
-function apply(it) {
-  it.el.setAttribute("x", round(it.x));
-  it.el.setAttribute("y", round(it.y));
-  it.el.setAttribute("width", round(it.w));
-  it.el.setAttribute("height", round(it.h));
-  if (it.r) it.el.setAttribute("transform",
-    `rotate(${round(it.r)} ${round(it.x + it.w / 2)} ${round(it.y + it.h / 2)})`);
-  else it.el.removeAttribute("transform");
-  drawSel();
-}
-const round = (n) => Math.round(n * 10) / 10;
-
 function drawSel() {
   const b = svg.__box;
   if (sel === null) { b.style.display = "none"; return; }
-  const it = items[sel];
-  b.setAttribute("x", it.x); b.setAttribute("y", it.y);
-  b.setAttribute("width", it.w); b.setAttribute("height", it.h);
-  if (it.r) b.setAttribute("transform",
-    `rotate(${it.r} ${it.x + it.w / 2} ${it.y + it.h / 2})`);
+  const box = readBox(items[sel].el);
+  b.setAttribute("x", box.x); b.setAttribute("y", box.y);
+  b.setAttribute("width", box.w); b.setAttribute("height", box.h);
+  if (box.r) b.setAttribute("transform",
+    `rotate(${box.r} ${box.x + box.w / 2} ${box.y + box.h / 2})`);
   else b.removeAttribute("transform");
   b.style.display = "";
 }
@@ -154,114 +132,123 @@ function select(i) {
   sel = i;
   [...listEl.children].forEach((c, j) => c.classList.toggle("sel", j === i));
   drawSel();
-  if (i !== null) {
-    const it = items[i];
-    status.textContent = `${it.name}  ${round(it.x)},${round(it.y)}  ${round(it.w)}×${round(it.h)}`;
-    // scrollIntoView 는 페이지까지 스크롤시켜 클릭 좌표를 어긋나게 만든다.
-    // 목록 컨테이너 안에서만 직접 스크롤한다.
-    const row = listEl.children[i];
-    if (row) {
-      const top = row.offsetTop - listEl.offsetTop;
-      if (top < listEl.scrollTop) listEl.scrollTop = top;
-      else if (top + row.offsetHeight > listEl.scrollTop + listEl.clientHeight)
-        listEl.scrollTop = top + row.offsetHeight - listEl.clientHeight;
-    }
-  }
-}
+  if (i === null) return;
 
-/** 점이 아이템 상자 안에 있는지. 회전은 역회전시켜서 판정한다. */
-function hits(it, p) {
-  let { x, y } = p;
-  if (it.r) {
-    const cx = it.x + it.w / 2, cy = it.y + it.h / 2;
-    const a = -it.r * Math.PI / 180, dx = x - cx, dy = y - cy;
-    x = cx + dx * Math.cos(a) - dy * Math.sin(a);
-    y = cy + dx * Math.sin(a) + dy * Math.cos(a);
-  }
-  return x >= it.x && x <= it.x + it.w && y >= it.y && y <= it.y + it.h;
+  const box = readBox(items[i].el);
+  status.textContent =
+    `${items[i].name}  ${round1(box.x)},${round1(box.y)}  ${round1(box.w)}×${round1(box.h)}`;
+  // scrollIntoView 는 페이지까지 스크롤시켜 클릭 좌표를 어긋나게 만든다.
+  // 목록 컨테이너 안에서만 직접 스크롤한다.
+  const row = listEl.children[i];
+  if (!row) return;
+  const top = row.offsetTop - listEl.offsetTop;
+  if (top < listEl.scrollTop) listEl.scrollTop = top;
+  else if (top + row.offsetHeight > listEl.scrollTop + listEl.clientHeight)
+    listEl.scrollTop = top + row.offsetHeight - listEl.clientHeight;
 }
 
 function onPointerDown(e) {
-  const p = toVB(e);
-  const cand = items
-    .map((it, i) => ({ i, area: it.w * it.h, hit: hits(it, p) }))
-    .filter(c => c.hit)
-    .sort((a, b) => a.area - b.area);        // 겹치면 작은 쪽이 우선
-  if (!cand.length) { select(null); return; }
-  startDrag(e, cand[0].i);
+  const p = toViewBox(svg, e);
+  const hit = items
+    .map((it, i) => ({ i, box: readBox(it.el) }))
+    .filter(c => boxHit(c.box, p.x, p.y))
+    .sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h)[0];   // 겹치면 작은 쪽이 우선
+  if (!hit) { select(null); return; }
+  startDrag(e, hit.i);
 }
 
 function startDrag(e, i) {
   e.preventDefault();
   select(i);
-  const it = items[i];
-  const s = toVB(e), ox = it.x, oy = it.y;
+  const el = items[i].el;
+  const from = toViewBox(svg, e), start = readBox(el);
+  // 캡처하지 않으면 커서가 SVG 밖으로 나갔을 때 pointerup 을 놓쳐 손을 뗀 뒤에도
+  // 가구가 계속 따라다닌다.
+  try { svg.setPointerCapture(e.pointerId); } catch (_) { /* 무시 */ }
+
   const move = (ev) => {
-    const p = toVB(ev);
-    it.x = ox + (p.x - s.x); it.y = oy + (p.y - s.y);
-    apply(it); renderList();
+    const p = toViewBox(svg, ev);
+    writeBox(el, { ...start, x: start.x + (p.x - from.x), y: start.y + (p.y - from.y) });
+    drawSel(); renderList();
   };
   const up = () => {
     svg.removeEventListener("pointermove", move);
     svg.removeEventListener("pointerup", up);
+    svg.removeEventListener("pointercancel", up);
   };
   svg.addEventListener("pointermove", move);
   svg.addEventListener("pointerup", up);
+  svg.addEventListener("pointercancel", up);
 }
 
 function onWheel(e) {
   if (sel === null) return;
   e.preventDefault();
-  const it = items[sel];
+  const el = items[sel].el, b = readBox(el);
   if (e.shiftKey) {
-    it.r = (it.r + (e.deltaY > 0 ? 15 : -15)) % 360;
+    b.r = (b.r + (e.deltaY > 0 ? 15 : -15)) % 360;
   } else {
     const k = e.deltaY > 0 ? 0.94 : 1.06;
-    const cx = it.x + it.w / 2, cy = it.y + it.h / 2;
-    it.w *= k; it.h *= k;
-    it.x = cx - it.w / 2; it.y = cy - it.h / 2;
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    b.w *= k; b.h *= k;
+    b.x = cx - b.w / 2; b.y = cy - b.h / 2;
   }
-  apply(it); renderList();
+  writeBox(el, b);
+  drawSel(); renderList();
 }
 
 addEventListener("keydown", (e) => {
   if (sel === null) return;
-  const it = items[sel];
+  const el = items[sel].el;
   if (e.key === "Delete" || e.key === "Backspace") {
-    it.el.remove(); items.splice(sel, 1); sel = null;
+    el.remove();
+    // initial 도 함께 지워야 한다. items 만 줄이면 "되돌리기" 가
+    // 밀린 인덱스의 좌표를 엉뚱한 가구에 씌운다.
+    items.splice(sel, 1); initial.splice(sel, 1); sel = null;
     renderList(); drawSel(); return;
   }
   const d = e.shiftKey ? 10 : 1;
   const map = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] };
   if (!map[e.key]) return;
   e.preventDefault();
-  it.x += map[e.key][0]; it.y += map[e.key][1];
-  apply(it); renderList();
+  const b = readBox(el);
+  writeBox(el, { ...b, x: b.x + map[e.key][0], y: b.y + map[e.key][1] });
+  drawSel(); renderList();
 });
 
 function renderList() {
   listEl.innerHTML = "";
   items.forEach((it, i) => {
+    const b = readBox(it.el);
     const d = document.createElement("div");
     d.className = i === sel ? "sel" : "";
     const ent = it.el.getAttribute("data-entity");
     d.innerHTML = `<span>${it.name}${ent ? " 🔗" : ""}</span>` +
-      `<span>${round(it.x)},${round(it.y)} ${round(it.w)}×${round(it.h)}${it.r ? " " + round(it.r) + "°" : ""}</span>`;
+      `<span>${round1(b.x)},${round1(b.y)} ${round1(b.w)}×${round1(b.h)}` +
+      `${b.r ? " " + round1(b.r) + "°" : ""}</span>`;
     if (ent) d.title = ent;
     d.onclick = () => select(i);
     listEl.appendChild(d);
   });
 }
 
+// 위치는 아래에서 새로 쓰므로 빼고, 나머지 속성은 원본 그대로 옮긴다.
+// id 가 빠지면 카드가 조명 여부(o-<에셋>-<번호>)도 layout 키도 잃고,
+// data-curtain 이 빠지면 커튼이 두 폭으로 갈리지 않는다.
+const LAYOUT_ATTRS = new Set(["x", "y", "width", "height", "transform", "style"]);
+
 document.getElementById("dump").onclick = () => {
   const lines = items.map(it => {
-    const t = it.r ? ` transform="rotate(${round(it.r)} ${round(it.x + it.w / 2)} ${round(it.y + it.h / 2)})"` : "";
-    const href = it.el.getAttribute("href");
-    // data-entity 를 빠뜨리면 붙여넣는 순간 엔티티 연결이 전부 날아간다
-    const ent = it.el.getAttribute("data-entity");
-    return `    <image href="${href}"${ent ? ` data-entity="${ent}"` : ""} ` +
-           `x="${round(it.x)}" y="${round(it.y)}" ` +
-           `width="${round(it.w)}" height="${round(it.h)}"${t}/>`;
+    const b = readBox(it.el);
+    const keep = [...it.el.attributes]
+      .filter(a => !LAYOUT_ATTRS.has(a.name))
+      .map(a => a.value === "" ? ` ${a.name}` : ` ${a.name}="${a.value}"`)
+      .join("");
+    const t = b.r
+      ? ` transform="rotate(${round1(b.r)} ${round1(b.x + b.w / 2)} ${round1(b.y + b.h / 2)})"`
+      : "";
+    return `    <image${keep} x="${round1(b.x)}" y="${round1(b.y)}" ` +
+           `width="${round1(b.w)}" height="${round1(b.h)}"${t}/>`;
   });
   out.value = `  <g id="fp-furniture">\n${lines.join("\n")}\n  </g>`;
   status.textContent = "출력했습니다. floorplan.svg 의 #fp-furniture 를 통째로 교체하세요.";
@@ -274,8 +261,10 @@ document.getElementById("copy").onclick = async () => {
 };
 
 document.getElementById("reset").onclick = () => {
-  initial.forEach((v, i) => { if (items[i]) Object.assign(items[i], v), apply(items[i]); });
-  renderList(); status.textContent = "되돌렸습니다.";
+  items.forEach((it, i) => writeBox(it.el, initial[i]));
+  select(sel);
+  renderList();
+  status.textContent = "되돌렸습니다.";
 };
 
 document.getElementById("theme").onclick = (e) => {

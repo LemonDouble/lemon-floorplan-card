@@ -61,7 +61,7 @@ const bandsOf = (o = {}) => {
 };
 
 /**
- * 공기질 칩. device_class 로 라벨·단위·등급을 정하므로 설정에는 엔티티만 적는다.
+ * 공기질 줄. device_class 로 라벨·단위·등급을 정하므로 설정에는 엔티티만 적는다.
  *
  * 방마다 칠하지 않고 평면도 아래 한 줄로 빼는 이유: 측정기가 침실 하나뿐이라
  * 방별로 나눌 데이터가 없고, 집이 작아 어차피 전체가 같은 상태로 봐도 된다.
@@ -147,6 +147,10 @@ const MOVE_TOL = 10;      // px. 이만큼 움직이면 스크롤로 보고 취�
 const CURTAIN_OPEN = 0.13;
 
 const round1 = (n) => Math.round(n * 10) / 10;
+
+/** innerHTML 에 넣기 전에 쓴다. 설정에서 온 문자열(title)과 예외 메시지가 대상이다 */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /** SVG 의 <image> 하나에서 위치/크기/회전을 읽는다 */
 function readBox(el) {
@@ -269,6 +273,178 @@ const TIER_RANK = { control: 0, tune: 1, info: 2 };
 
 const dom = (eid) => eid.split(".")[0];
 
+/* 카드 셸의 스타일. 런타임 상태(data-tint, data-on 등)가 걸리는 규칙만 여기 있고,
+   평면도 자체의 정적인 생김새는 floorplan.svg 안의 <style> 에 있다. */
+const CARD_CSS = `
+  :host { display: block; }
+  ha-card, .card {
+    background: var(--ha-card-background, var(--card-background-color, #fff));
+    border-radius: var(--ha-card-border-radius, 12px);
+    box-shadow: var(--ha-card-box-shadow, none);
+    border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, #e0e0e0));
+    overflow: hidden;
+  }
+  .card { padding: 8px; }
+  .title { font: 500 16px/1.4 var(--ha-font-family-body, system-ui, sans-serif);
+           color: var(--primary-text-color); padding: 8px 8px 4px; }
+  .plan { position: relative; container-type: inline-size; }
+  .plan svg { width: 100%; height: auto; display: block; }
+  .err { padding: 16px; color: var(--error-color, #db4437);
+         font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+
+  /* 공기질 줄. 측정기가 침실 하나뿐이라 방에 칠하지 않고 여기 모은다.
+     config.air 가 없으면 :empty 로 통째로 사라진다.
+
+     칩(배경 있는 pill)으로 만들면 항목이 셋만 돼도 카드 아래가 무거워진다.
+     방 이름 아래 온습도와 같은 문법의 담백한 한 줄로 둔다 — 평면도가 주인공이고
+     이건 곁들이는 정보다. */
+  .air {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px;
+    padding: 10px 12px 4px;
+    font: 500 12px/1.5 var(--ha-font-family-body, system-ui, sans-serif);
+    color: var(--secondary-text-color);
+  }
+  .air:empty { display: none; }
+  .air .item {
+    display: inline-flex; align-items: baseline; gap: 4px;
+    border: 0; background: none; padding: 0; cursor: pointer;
+    font: inherit; color: inherit;
+  }
+  .air .item:hover b { text-decoration: underline; text-underline-offset: 3px; }
+  .air .item b { font: 600 14px/1 inherit; color: var(--primary-text-color); }
+  .air .item i { font-style: normal; font-size: 10px; opacity: .7; }
+  /* 좋음·보통은 색을 주지 않는다. 늘 물들어 있으면 경고가 묻힌다 —
+     방 온도 틴트에서 쾌적 구간을 비워둔 것과 같은 이유다. */
+  .air .item[data-level="warn"] b { color: var(--fp-temp-warm, #ffa726); }
+  .air .item[data-level="bad"]  b { color: var(--fp-temp-hot,  #ef5350); }
+  .air .item[data-level="none"] b { opacity: .5; }
+
+  /* 방 상태 틴트.
+     .room 은 바닥·가구 위에 얹힌 투명 오버레이라, fill-opacity 만 올리면
+     아래 레이어가 비쳐 보인다 (fill 을 덮어쓰던 예전 방식과 다르다) */
+  .plan svg .room[data-tint] { fill-opacity: .3; }
+  .plan svg .room[data-tint]:hover { fill-opacity: .42; }
+  .plan svg .room[data-tint="warm"]  { fill: var(--state-light-active-color, #ffc107); }
+  .plan svg .room[data-tint="cool"]  { fill: var(--state-climate-cool-color, #2196f3); }
+  .plan svg .room[data-tint="heat"]  { fill: var(--state-climate-heat-color, #ff6f22); }
+  /* 미디어는 HA 의 --state-media_player-active-color(#03a9f4) 를 쓰지 않는다.
+     냉방색 #2196f3 과 거의 같은 파랑이라 방 색만 보고는 에어컨인지 TV 인지 못 가린다. */
+  .plan svg .room[data-tint="media"] { fill: var(--purple-color, #926bc7); }
+
+  /* 온도 틴트 (room_tint: temperature).
+     기기 틴트와 달리 늘 켜져 있으므로 한 단계 옅게 깐다. 쾌적 구간은 아예
+     칠하지 않으니(TEMP_BANDS 참고) 색이 보인다는 것 자체가 이미 신호다. */
+  .plan svg .room[data-tint^="temp-"]    { fill-opacity: .17; }
+  .plan svg .room[data-tint="temp-cold"] { fill: var(--fp-temp-cold, #1e88e5); }
+  .plan svg .room[data-tint="temp-cool"] { fill: var(--fp-temp-cool, #4fc3f7); }
+  .plan svg .room[data-tint="temp-warm"] { fill: var(--fp-temp-warm, #ffa726); }
+  .plan svg .room[data-tint="temp-hot"]  { fill: var(--fp-temp-hot,  #ef5350); fill-opacity: .23; }
+
+  /* 엔티티가 연결된 가구: 투명 히트영역이 맨 위에 깔린다 */
+  .plan svg .hotspot {
+    fill: var(--state-icon-active-color, #f9a825); fill-opacity: 0;
+    pointer-events: all; cursor: pointer; touch-action: none;
+    transition: fill-opacity .15s ease;
+  }
+  .plan svg .hotspot:hover { fill-opacity: .18; }
+  /* 누르고 있는 동안 hold_time 에 맞춰 서서히 진해진다 = 길게 누르기 진행 표시 */
+  .plan svg .hotspot.pressing {
+    fill-opacity: .45;
+    transition: fill-opacity var(--hold-ms, 500ms) linear;
+  }
+  /* 켜짐 표시.
+     조명만 실제로 발광시키고, 나머지 기기는 실루엣을 따라 얇은 테두리만 준다.
+     에어컨·세탁기가 등처럼 환하게 빛나면 어색해서 갈랐다.
+     drop-shadow 의 길이는 SVG 사용자 단위(viewBox 920 기준)라 화면 크기가
+     달라져도 굵기 비율이 유지된다 — 모바일에서 따로 손볼 게 없다.
+     같은 그림자를 두 번 겹치는 건 흐릿한 후광 대신 진한 윤곽을 얻으려는 것. */
+  .plan svg #fp-furniture image { transition: filter .25s ease; }
+  /* 방 색이 온도를 맡게 되면서 "무엇이 켜져 있나" 는 전적으로 가구 몫이 됐다.
+     그래서 예전(2+2, 5+10)보다 한 단계씩 세게 준다. brightness 를 함께 올리는
+     것은 그림자가 닿지 않는 실루엣 안쪽까지 살아나게 하려는 것 — 테두리만
+     밝으면 작은 기기는 멀리서 켜짐이 안 보인다. */
+  .plan svg #fp-furniture image[data-on] {
+    --fp-tone: var(--state-icon-active-color, #f9a825);
+    filter: drop-shadow(0 0 3px var(--fp-tone)) drop-shadow(0 0 3px var(--fp-tone))
+            brightness(1.06);
+  }
+  /* 조명은 실제로 빛을 내니 넓게 발광 */
+  .plan svg #fp-furniture image[data-on="light"] {
+    --fp-tone: var(--state-light-active-color, #ffc107);
+    filter: drop-shadow(0 0 6px var(--fp-tone)) drop-shadow(0 0 16px var(--fp-tone));
+  }
+  .plan svg #fp-furniture image[data-on="cool"]  { --fp-tone: var(--state-climate-cool-color, #2196f3); }
+  .plan svg #fp-furniture image[data-on="heat"]  { --fp-tone: var(--state-climate-heat-color, #ff6f22); }
+  .plan svg #fp-furniture image[data-on="media"] { --fp-tone: var(--purple-color, #926bc7); }
+  .plan svg #fp-furniture image[data-on="air"]   { --fp-tone: var(--state-fan-active-color, #00bcd4); }
+  .plan svg #fp-furniture image[data-on="alert"] { --fp-tone: var(--red-color, #f44336); }
+
+  /* 팝업 */
+  dialog {
+    border: none; padding: 0; max-width: 560px; width: calc(100vw - 32px);
+    max-height: 84vh; border-radius: 18px;
+    background: var(--card-background-color, #fff); color: var(--primary-text-color);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.5); }
+  /* 팝업 폭에 맞춰 열 수를 바꿔야 하는데, dialog 는 showModal 로 최상위 레이어에
+     올라가 .plan 바깥에 있다. 그래서 .plan 의 컨테이너를 못 쓴다 —
+     여기서 컨테이너를 따로 세워야 아래 @container 가 비로소 걸린다. */
+  .sheet { display: flex; flex-direction: column; max-height: 84vh;
+           container-type: inline-size; }
+  .sheet header {
+    display: flex; align-items: baseline; gap: 10px; padding: 18px 18px 14px;
+    border-bottom: 1px solid var(--divider-color, #e0e0e0);
+  }
+  .rn  { font: 600 19px/1.2 var(--ha-font-family-body, system-ui, sans-serif); }
+  .env { font-size: 13px; color: var(--secondary-text-color); }
+  .sheet header button {
+    margin-inline-start: auto; border: 0; background: transparent;
+    color: var(--secondary-text-color); font-size: 22px; line-height: 1;
+    cursor: pointer; padding: 2px 8px; border-radius: 8px;
+  }
+  .sheet header button:hover { background: var(--secondary-background-color, #eee); }
+
+  .body { overflow-y: auto; padding: 14px; }
+  /* 1fr 은 minmax(auto,1fr) 이라 칸이 내용의 min-content 아래로 안 줄어든다.
+     긴 기기 이름 하나가 열을 밀어내 그리드가 팝업 밖으로 삐져나갔다.
+     minmax(0,1fr) 이라야 줄어들면서 안에서 말줄임된다. */
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  /* 폰은 전부 1열. 2열을 쓰려면 한 칸이 200px 은 돼야 하는데(본문 여백 28 + 간격 8),
+     440px 이하에서는 그게 안 나온다. HA 기본 대시보드도 폰에서는 타일이 한 줄이다. */
+  @container (max-width: 440px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .sub { font: 500 12px/1 var(--ha-font-family-body, system-ui, sans-serif);
+         letter-spacing: .04em; text-transform: uppercase;
+         color: var(--secondary-text-color); padding: 4px 2px 8px; }
+  .dev { font: 500 13px/1 var(--ha-font-family-body, system-ui, sans-serif);
+         color: var(--secondary-text-color); padding: 14px 2px 6px; }
+  .empty { padding: 28px 8px; text-align: center; color: var(--secondary-text-color); }
+
+  details { margin-top: 18px; border-top: 1px solid var(--divider-color, #e0e0e0); }
+  summary {
+    list-style: none; cursor: pointer; user-select: none;
+    padding: 14px 2px 4px; color: var(--secondary-text-color);
+    font: 500 14px/1 var(--ha-font-family-body, system-ui, sans-serif);
+    display: flex; align-items: center; gap: 6px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "⌄"; margin-inline-start: auto; font-size: 16px; transition: transform .2s; }
+  details[open] summary::after { transform: rotate(180deg); }
+  summary .n {
+    background: var(--secondary-background-color, #eee); border-radius: 10px;
+    padding: 1px 8px; font-size: 12px;
+  }
+  .all { display: grid; gap: 8px; padding-bottom: 4px; }
+
+  /* loadCardHelpers 가 없을 때 쓰는 폴백 행 */
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+         border-radius: 12px; background: var(--secondary-background-color, #f3f4f6); cursor: pointer; }
+  .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .st { color: var(--secondary-text-color); font-size: 13px; }
+  .row button { border: 1px solid var(--divider-color, #ddd); border-radius: 8px;
+                background: var(--card-background-color, #fff); color: inherit;
+                padding: 6px 12px; cursor: pointer; font: inherit; }
+`;
+
 class LemonFloorplanCard extends HTMLElement {
   constructor() {
     super();
@@ -290,6 +466,7 @@ class LemonFloorplanCard extends HTMLElement {
     this._config = { exclude: [], exclude_devices: [], rooms: {}, aliases: {}, ...config };
     this._exEnt = new Set(this._config.exclude);
     this._exDev = new Set(this._config.exclude_devices);
+    this._demote = new Set(this._config.demote || []);
     this._ready = false;
     this._sig = {};
     this.shadowRoot.innerHTML = "";
@@ -373,42 +550,52 @@ class LemonFloorplanCard extends HTMLElement {
     }
 
     // 2) device 별 대표 엔티티 + 전체 목록으로 정리
-    const demote = new Set(this._config.demote || []);
     this._rooms = {};
     for (const [area, devMap] of Object.entries(byArea)) {
-      const roomCfg = this._config.rooms?.[area] || {};
-      const override = roomCfg.primary;          // 대표 목록을 통째로 교체
-      const pin = new Set(roomCfg.pin || []);    // 대표에 "추가" (교체가 아니라)
-      const primary = [], groups = [];
-      let count = 0;
-
-      const entries = Object.entries(devMap).sort(
-        (a, b) => (devName[a[0]] || "").localeCompare(devName[b[0]] || ""));
-
-      for (const [devId, ids] of entries) {
-        ids.sort((x, y) => {
-          const d = TIER_RANK[TIER_OF[dom(x)]] - TIER_RANK[TIER_OF[dom(y)]];
-          return d !== 0 ? d : x.localeCompare(y);
-        });
-        count += ids.length;
-        groups.push({ name: devName[devId] || "기타", ids });
-
-        if (override) continue;
-        // 이 device 에서 가장 높은 우선순위 도메인을 찾고, 그 도메인 전부를 대표로.
-        // demote 된 엔티티는 대표가 못 되고 전체 보기에만 남는다 (pin 은 명시라 이긴다)
-        const cand = ids.filter((e) => !demote.has(e));
-        const top = PRIMARY_PRIORITY.find((d) => cand.some((e) => dom(e) === d));
-        if (top) primary.push(...cand.filter((e) => dom(e) === top));
-        // 이 device 에 속한 pin 은 대표 바로 뒤에 붙인다 (에어컨 옆에 무풍·풍량이 오도록)
-        primary.push(...ids.filter((e) => pin.has(e) && !primary.includes(e)));
-      }
-
-      this._rooms[area] = {
-        primary: override ? override.slice() : primary,
-        groups, count,
-        all: groups.flatMap((g) => g.ids),
-      };
+      this._rooms[area] = this._buildRoom(area, devMap, devName);
     }
+  }
+
+  /**
+   * 방 하나의 팝업 자료를 만든다.
+   *   primary  "자주 쓰는 것" 에 놓일 엔티티
+   *   groups   "전체 보기" 에서 device 별로 묶인 목록 (device 이름순)
+   *
+   * 대표는 임의로 고르지 않는다. device 안에서 PRIMARY_PRIORITY 가 가장 높은
+   * 도메인을 찾고 그 도메인 엔티티를 전부 쓴다.
+   */
+  _buildRoom(area, devMap, devName) {
+    const roomCfg = this._config.rooms?.[area] || {};
+    const override = roomCfg.primary;          // 대표 목록을 통째로 교체
+    const pin = new Set(roomCfg.pin || []);    // 대표에 "추가" (교체가 아니라)
+    const primary = [], groups = [];
+    let count = 0;
+
+    const entries = Object.entries(devMap).sort(
+      (a, b) => (devName[a[0]] || "").localeCompare(devName[b[0]] || ""));
+
+    for (const [devId, ids] of entries) {
+      ids.sort((x, y) => {
+        const d = TIER_RANK[TIER_OF[dom(x)]] - TIER_RANK[TIER_OF[dom(y)]];
+        return d !== 0 ? d : x.localeCompare(y);
+      });
+      count += ids.length;
+      groups.push({ name: devName[devId] || "기타", ids });
+
+      if (override) continue;
+      // demote 된 엔티티는 대표가 못 되고 전체 보기에만 남는다 (pin 은 명시라 이긴다)
+      const cand = ids.filter((e) => !this._demote.has(e));
+      const top = PRIMARY_PRIORITY.find((d) => cand.some((e) => dom(e) === d));
+      if (top) primary.push(...cand.filter((e) => dom(e) === top));
+      // 이 device 에 속한 pin 은 대표 바로 뒤에 붙인다 (에어컨 옆에 무풍·풍량이 오도록)
+      primary.push(...ids.filter((e) => pin.has(e) && !primary.includes(e)));
+    }
+
+    return {
+      primary: override ? override.slice() : primary,
+      groups, count,
+      all: groups.flatMap((g) => g.ids),
+    };
   }
 
   _wireRooms() {
@@ -531,64 +718,79 @@ class LemonFloorplanCard extends HTMLElement {
 
   // ── 상태 반영 ──────────────────────────────────────────────
 
-  /** set hass 는 시스템 전체 상태 변화마다 불린다. 바뀐 방만 건드린다. */
+  /**
+   * set hass 는 시스템 전체 상태 변화마다 불린다. 아래 다섯은 각자 마지막으로 그린
+   * 값을 들고 있다가 바뀐 것만 DOM 을 건드린다.
+   */
   _paint() {
-    const hass = this._hass;
-    if (!hass || !this._rooms) return;
+    if (!this._hass || !this._rooms) return;
+    this._paintRooms();
+    this._paintCurtains();
+    this._paintObjects();
+    this._paintEnvLabels();
+    this._paintAir();
+  }
 
+  _paintRooms() {
     for (const el of this.shadowRoot.querySelectorAll(".plan .room")) {
       const areaId = el.id.replace(/^room-/, "");
       const tint = this._roomTint(areaId);
-      if (this._sig[areaId] === tint) continue;     // 안 바뀌었으면 DOM 안 만짐
+      if (this._sig[areaId] === tint) continue;
       this._sig[areaId] = tint;
 
       if (tint) el.setAttribute("data-tint", tint);
       else el.removeAttribute("data-tint");
     }
+  }
 
-    // 가구 하나하나도 자기 엔티티 상태를 표시한다.
-    // 조명은 발광, 나머지는 도메인 색 테두리 — data-on 값이 그 구분이다.
-    // 커튼: 닫히면 두 폭이 창을 반씩 덮고, 열리면 양끝으로 물러난다
+  /** 닫히면 두 폭이 창을 반씩 덮고, 열리면 양끝으로 물러난다 */
+  _paintCurtains() {
     for (const c of this._curtains || []) {
-      const closed = hass.states[c.eid]?.state === "closed";
-      if (c.closed === closed) continue;               // 안 바뀌었으면 DOM 안 만짐
+      const closed = this._hass.states[c.eid]?.state === "closed";
+      if (c.closed === closed) continue;
       c.closed = closed;
       const w = c.base.w * (closed ? 0.5 : CURTAIN_OPEN);
       writeBox(c.panels[0], { ...c.base, w });
       writeBox(c.panels[1], { ...c.base, w, x: c.base.x + c.base.w - w });
     }
+  }
 
+  /** 가구마다 자기 엔티티 상태를 표시한다. 조명은 발광, 나머지는 도메인 색 테두리 */
+  _paintObjects() {
     for (const o of this._objects || []) {
-      const st = hass.states[o.eid];
+      const st = this._hass.states[o.eid];
       const rule = st && OBJECT_ON[dom(o.eid)];
       const tone = rule && rule(st) ? (o.light ? "light" : toneOf(o.eid, st)) : null;
-      if (o.tone === tone) continue;                   // 안 바뀌었으면 DOM 안 만짐
+      if (o.tone === tone) continue;
       o.tone = tone;
       if (tone) o.img.setAttribute("data-on", tone);
       else o.img.removeAttribute("data-on");
     }
+  }
 
-    // 방 이름 아래 온·습도. 평면도는 좁아서 팝업보다 구분자를 줄인다.
+  /** 방 이름 아래 온·습도. 평면도는 좁아서 팝업보다 구분자를 줄인다 */
+  _paintEnvLabels() {
     for (const l of this._envLabels || []) {
       const txt = this._envSummary(l.areaId, " · ");
-      if (l.txt === txt) continue;                     // 안 바뀌었으면 DOM 안 만짐
+      if (l.txt === txt) continue;
       l.txt = txt;
       l.el.textContent = txt;
     }
+  }
 
-    // 평면도 아래 공기질 칩
-    for (const c of this._airChips || []) {
-      const st = hass.states[c.eid];
+  _paintAir() {
+    for (const item of this._airItems || []) {
+      const st = this._hass.states[item.eid];
       const v = st ? parseFloat(st.state) : NaN;
       const ok = Number.isFinite(v);
-      const level = ok ? c.kind.bands.find(([max]) => v < max)[1] : "none";
+      const level = ok ? item.kind.bands.find(([max]) => v < max)[1] : "none";
       const unit = (ok && st.attributes.unit_of_measurement) || "";
       const sig = `${level}|${ok ? round1(v) : "—"}|${unit}`;
-      if (c.sig === sig) continue;
-      c.sig = sig;
-      c.chip.dataset.level = level;
-      c.chip.querySelector("b").textContent = ok ? round1(v) : "—";
-      c.chip.querySelector("i").textContent = unit;
+      if (item.sig === sig) continue;
+      item.sig = sig;
+      item.el.dataset.level = level;
+      item.el.querySelector("b").textContent = ok ? round1(v) : "—";
+      item.el.querySelector("i").textContent = unit;
     }
   }
 
@@ -652,11 +854,11 @@ class LemonFloorplanCard extends HTMLElement {
   }
 
   /**
-   * 평면도 아래 공기질 줄을 만든다. config.air 에 적은 순서대로 칩이 놓인다.
-   * 칩은 한 번만 만들고 _paint 가 값만 갈아끼운다 (매번 새로 그리면 클릭이 끊긴다).
+   * 평면도 아래 공기질 줄을 만든다. config.air 에 적은 순서대로 항목이 놓인다.
+   * 항목은 한 번만 만들고 _paint 가 값만 갈아끼운다 (매번 새로 그리면 클릭이 끊긴다).
    */
   _wireAir() {
-    this._airChips = [];
+    this._airItems = [];
     const row = this.shadowRoot.querySelector(".air");
     if (!row) return;
     row.textContent = "";
@@ -664,13 +866,13 @@ class LemonFloorplanCard extends HTMLElement {
       const st = this._hass.states[eid];
       const kind = AIR_KINDS[st?.attributes.device_class];
       if (!kind) continue;                         // 모르는 종류는 조용히 건너뛴다
-      const chip = document.createElement("button");
-      chip.className = "item";
-      chip.innerHTML = `<span></span><b></b><i></i>`;
-      chip.querySelector("span").textContent = kind.label;
-      chip.onclick = () => this._moreInfo(eid);
-      row.appendChild(chip);
-      this._airChips.push({ eid, kind, chip });
+      const item = document.createElement("button");
+      item.className = "item";
+      item.innerHTML = `<span></span><b></b><i></i>`;
+      item.querySelector("span").textContent = kind.label;
+      item.onclick = () => this._moreInfo(eid);
+      row.appendChild(item);
+      this._airItems.push({ eid, kind, el: item });
     }
   }
 
@@ -859,11 +1061,7 @@ class LemonFloorplanCard extends HTMLElement {
       };
       row.appendChild(b);
     }
-    row.onclick = () => {
-      const ev = new Event("hass-more-info", { bubbles: true, composed: true });
-      ev.detail = { entityId: eid };
-      this.dispatchEvent(ev);
-    };
+    row.onclick = () => this._moreInfo(eid);
     return row;
   }
 
@@ -871,178 +1069,10 @@ class LemonFloorplanCard extends HTMLElement {
 
   _render() {
     this.shadowRoot.innerHTML = `
-      <style>
-        :host { display: block; }
-        ha-card, .card {
-          background: var(--ha-card-background, var(--card-background-color, #fff));
-          border-radius: var(--ha-card-border-radius, 12px);
-          box-shadow: var(--ha-card-box-shadow, none);
-          border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, #e0e0e0));
-          overflow: hidden;
-        }
-        .card { padding: 8px; }
-        .title { font: 500 16px/1.4 var(--ha-font-family-body, system-ui, sans-serif);
-                 color: var(--primary-text-color); padding: 8px 8px 4px; }
-        .plan { position: relative; container-type: inline-size; }
-        .plan svg { width: 100%; height: auto; display: block; }
-        .err { padding: 16px; color: var(--error-color, #db4437);
-               font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
-
-        /* 공기질 줄. 측정기가 침실 하나뿐이라 방에 칠하지 않고 여기 모은다.
-           config.air 가 없으면 :empty 로 통째로 사라진다.
-
-           칩(배경 있는 pill)으로 만들면 항목이 셋만 돼도 카드 아래가 무거워진다.
-           방 이름 아래 온습도와 같은 문법의 담백한 한 줄로 둔다 — 평면도가 주인공이고
-           이건 곁들이는 정보다. */
-        .air {
-          display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px;
-          padding: 10px 12px 4px;
-          font: 500 12px/1.5 var(--ha-font-family-body, system-ui, sans-serif);
-          color: var(--secondary-text-color);
-        }
-        .air:empty { display: none; }
-        .air .item {
-          display: inline-flex; align-items: baseline; gap: 4px;
-          border: 0; background: none; padding: 0; cursor: pointer;
-          font: inherit; color: inherit;
-        }
-        .air .item:hover b { text-decoration: underline; text-underline-offset: 3px; }
-        .air .item b { font: 600 14px/1 inherit; color: var(--primary-text-color); }
-        .air .item i { font-style: normal; font-size: 10px; opacity: .7; }
-        /* 좋음·보통은 색을 주지 않는다. 늘 물들어 있으면 경고가 묻힌다 —
-           방 온도 틴트에서 쾌적 구간을 비워둔 것과 같은 이유다. */
-        .air .item[data-level="warn"] b { color: var(--fp-temp-warm, #ffa726); }
-        .air .item[data-level="bad"]  b { color: var(--fp-temp-hot,  #ef5350); }
-        .air .item[data-level="none"] b { opacity: .5; }
-
-        /* 방 상태 틴트.
-           .room 은 바닥·가구 위에 얹힌 투명 오버레이라, fill-opacity 만 올리면
-           아래 레이어가 비쳐 보인다 (fill 을 덮어쓰던 예전 방식과 다르다) */
-        .plan svg .room[data-tint] { fill-opacity: .3; }
-        .plan svg .room[data-tint]:hover { fill-opacity: .42; }
-        .plan svg .room[data-tint="warm"]  { fill: var(--state-light-active-color, #ffc107); }
-        .plan svg .room[data-tint="cool"]  { fill: var(--state-climate-cool-color, #2196f3); }
-        .plan svg .room[data-tint="heat"]  { fill: var(--state-climate-heat-color, #ff6f22); }
-        /* 미디어는 HA 의 --state-media_player-active-color(#03a9f4) 를 쓰지 않는다.
-           냉방색 #2196f3 과 거의 같은 파랑이라 방 색만 보고는 에어컨인지 TV 인지 못 가린다. */
-        .plan svg .room[data-tint="media"] { fill: var(--purple-color, #926bc7); }
-
-        /* 온도 틴트 (room_tint: temperature).
-           기기 틴트와 달리 늘 켜져 있으므로 한 단계 옅게 깐다. 쾌적 구간은 아예
-           칠하지 않으니(TEMP_BANDS 참고) 색이 보인다는 것 자체가 이미 신호다. */
-        .plan svg .room[data-tint^="temp-"]    { fill-opacity: .17; }
-        .plan svg .room[data-tint="temp-cold"] { fill: var(--fp-temp-cold, #1e88e5); }
-        .plan svg .room[data-tint="temp-cool"] { fill: var(--fp-temp-cool, #4fc3f7); }
-        .plan svg .room[data-tint="temp-warm"] { fill: var(--fp-temp-warm, #ffa726); }
-        .plan svg .room[data-tint="temp-hot"]  { fill: var(--fp-temp-hot,  #ef5350); fill-opacity: .23; }
-
-        /* 엔티티가 연결된 가구: 투명 히트영역이 맨 위에 깔린다 */
-        .plan svg .hotspot {
-          fill: var(--state-icon-active-color, #f9a825); fill-opacity: 0;
-          pointer-events: all; cursor: pointer; touch-action: none;
-          transition: fill-opacity .15s ease;
-        }
-        .plan svg .hotspot:hover { fill-opacity: .18; }
-        /* 누르고 있는 동안 hold_time 에 맞춰 서서히 진해진다 = 길게 누르기 진행 표시 */
-        .plan svg .hotspot.pressing {
-          fill-opacity: .45;
-          transition: fill-opacity var(--hold-ms, 500ms) linear;
-        }
-        /* 켜짐 표시.
-           조명만 실제로 발광시키고, 나머지 기기는 실루엣을 따라 얇은 테두리만 준다.
-           에어컨·세탁기가 등처럼 환하게 빛나면 어색해서 갈랐다.
-           drop-shadow 의 길이는 SVG 사용자 단위(viewBox 920 기준)라 화면 크기가
-           달라져도 굵기 비율이 유지된다 — 모바일에서 따로 손볼 게 없다.
-           같은 그림자를 두 번 겹치는 건 흐릿한 후광 대신 진한 윤곽을 얻으려는 것. */
-        .plan svg #fp-furniture image { transition: filter .25s ease; }
-        /* 방 색이 온도를 맡게 되면서 "무엇이 켜져 있나" 는 전적으로 가구 몫이 됐다.
-           그래서 예전(2+2, 5+10)보다 한 단계씩 세게 준다. brightness 를 함께 올리는
-           것은 그림자가 닿지 않는 실루엣 안쪽까지 살아나게 하려는 것 — 테두리만
-           밝으면 작은 기기는 멀리서 켜짐이 안 보인다. */
-        .plan svg #fp-furniture image[data-on] {
-          --fp-tone: var(--state-icon-active-color, #f9a825);
-          filter: drop-shadow(0 0 3px var(--fp-tone)) drop-shadow(0 0 3px var(--fp-tone))
-                  brightness(1.06);
-        }
-        /* 조명은 실제로 빛을 내니 넓게 발광 */
-        .plan svg #fp-furniture image[data-on="light"] {
-          --fp-tone: var(--state-light-active-color, #ffc107);
-          filter: drop-shadow(0 0 6px var(--fp-tone)) drop-shadow(0 0 16px var(--fp-tone));
-        }
-        .plan svg #fp-furniture image[data-on="cool"]  { --fp-tone: var(--state-climate-cool-color, #2196f3); }
-        .plan svg #fp-furniture image[data-on="heat"]  { --fp-tone: var(--state-climate-heat-color, #ff6f22); }
-        .plan svg #fp-furniture image[data-on="media"] { --fp-tone: var(--purple-color, #926bc7); }
-        .plan svg #fp-furniture image[data-on="air"]   { --fp-tone: var(--state-fan-active-color, #00bcd4); }
-        .plan svg #fp-furniture image[data-on="alert"] { --fp-tone: var(--red-color, #f44336); }
-
-        /* 팝업 */
-        dialog {
-          border: none; padding: 0; max-width: 560px; width: calc(100vw - 32px);
-          max-height: 84vh; border-radius: 18px;
-          background: var(--card-background-color, #fff); color: var(--primary-text-color);
-        }
-        dialog::backdrop { background: rgba(0,0,0,.5); }
-        /* 팝업 폭에 맞춰 열 수를 바꿔야 하는데, dialog 는 showModal 로 최상위 레이어에
-           올라가 .plan 바깥에 있다. 그래서 .plan 의 컨테이너를 못 쓴다 —
-           여기서 컨테이너를 따로 세워야 아래 @container 가 비로소 걸린다. */
-        .sheet { display: flex; flex-direction: column; max-height: 84vh;
-                 container-type: inline-size; }
-        .sheet header {
-          display: flex; align-items: baseline; gap: 10px; padding: 18px 18px 14px;
-          border-bottom: 1px solid var(--divider-color, #e0e0e0);
-        }
-        .rn  { font: 600 19px/1.2 var(--ha-font-family-body, system-ui, sans-serif); }
-        .env { font-size: 13px; color: var(--secondary-text-color); }
-        .sheet header button {
-          margin-inline-start: auto; border: 0; background: transparent;
-          color: var(--secondary-text-color); font-size: 22px; line-height: 1;
-          cursor: pointer; padding: 2px 8px; border-radius: 8px;
-        }
-        .sheet header button:hover { background: var(--secondary-background-color, #eee); }
-
-        .body { overflow-y: auto; padding: 14px; }
-        /* 1fr 은 minmax(auto,1fr) 이라 칸이 내용의 min-content 아래로 안 줄어든다.
-           긴 기기 이름 하나가 열을 밀어내 그리드가 팝업 밖으로 삐져나갔다.
-           minmax(0,1fr) 이라야 줄어들면서 안에서 말줄임된다. */
-        .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-        /* 폰은 전부 1열. 2열을 쓰려면 한 칸이 200px 은 돼야 하는데(본문 여백 28 + 간격 8),
-           440px 이하에서는 그게 안 나온다. HA 기본 대시보드도 폰에서는 타일이 한 줄이다. */
-        @container (max-width: 440px) { .grid { grid-template-columns: minmax(0, 1fr); } }
-        .sub { font: 500 12px/1 var(--ha-font-family-body, system-ui, sans-serif);
-               letter-spacing: .04em; text-transform: uppercase;
-               color: var(--secondary-text-color); padding: 4px 2px 8px; }
-        .dev { font: 500 13px/1 var(--ha-font-family-body, system-ui, sans-serif);
-               color: var(--secondary-text-color); padding: 14px 2px 6px; }
-        .empty { padding: 28px 8px; text-align: center; color: var(--secondary-text-color); }
-
-        details { margin-top: 18px; border-top: 1px solid var(--divider-color, #e0e0e0); }
-        summary {
-          list-style: none; cursor: pointer; user-select: none;
-          padding: 14px 2px 4px; color: var(--secondary-text-color);
-          font: 500 14px/1 var(--ha-font-family-body, system-ui, sans-serif);
-          display: flex; align-items: center; gap: 6px;
-        }
-        summary::-webkit-details-marker { display: none; }
-        summary::after { content: "⌄"; margin-inline-start: auto; font-size: 16px; transition: transform .2s; }
-        details[open] summary::after { transform: rotate(180deg); }
-        summary .n {
-          background: var(--secondary-background-color, #eee); border-radius: 10px;
-          padding: 1px 8px; font-size: 12px;
-        }
-        .all { display: grid; gap: 8px; padding-bottom: 4px; }
-
-        /* loadCardHelpers 가 없을 때 쓰는 폴백 행 */
-        .row { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
-               border-radius: 12px; background: var(--secondary-background-color, #f3f4f6); cursor: pointer; }
-        .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .row .st { color: var(--secondary-text-color); font-size: 13px; }
-        .row button { border: 1px solid var(--divider-color, #ddd); border-radius: 8px;
-                      background: var(--card-background-color, #fff); color: inherit;
-                      padding: 6px 12px; cursor: pointer; font: inherit; }
-      </style>
+      <style>${CARD_CSS}</style>
 
       <ha-card class="card">
-        ${this._config.title ? `<div class="title">${this._esc(this._config.title)}</div>` : ""}
+        ${this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : ""}
         <div class="plan"></div>
         <div class="air"></div>
       </ha-card>
@@ -1063,12 +1093,7 @@ class LemonFloorplanCard extends HTMLElement {
   _fail(err) {
     console.error(`[${CARD_TAG}]`, err);
     this.shadowRoot.innerHTML =
-      `<ha-card class="card"><div class="err">${this._esc(String(err.message || err))}</div></ha-card>`;
-  }
-
-  _esc(s) {
-    return String(s).replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      `<ha-card class="card"><div class="err">${esc(String(err.message || err))}</div></ha-card>`;
   }
 }
 
@@ -1170,6 +1195,9 @@ class LemonFloorplanCardEditor extends HTMLElement {
 
     this._select(hit.el);
     const start = readBox(hit.el);
+    // 캡처하지 않으면 커서가 SVG 밖으로 나갔을 때 pointerup 을 놓쳐 손을 뗀 뒤에도
+    // 가구가 계속 따라다닌다. 카드 쪽 _wirePress 와 같은 처리다.
+    try { this._svg.setPointerCapture(ev.pointerId); } catch (_) { /* 무시 */ }
     const move = (e) => {
       const q = toViewBox(this._svg, e);
       writeBox(hit.el, { ...start, x: start.x + (q.x - p.x), y: start.y + (q.y - p.y) });
@@ -1178,10 +1206,12 @@ class LemonFloorplanCardEditor extends HTMLElement {
     const up = () => {
       this._svg.removeEventListener("pointermove", move);
       this._svg.removeEventListener("pointerup", up);
+      this._svg.removeEventListener("pointercancel", up);
       this._emit();
     };
     this._svg.addEventListener("pointermove", move);
     this._svg.addEventListener("pointerup", up);
+    this._svg.addEventListener("pointercancel", up);
   }
 
   _wheel(ev) {
@@ -1265,3 +1295,8 @@ window.customCards.push({
 console.info(`%c ${CARD_TAG} %c loaded `,
   "background:#f9a825;color:#000;border-radius:3px 0 0 3px;padding:2px 4px",
   "background:#333;color:#fff;border-radius:0 3px 3px 0;padding:2px 4px");
+
+/* 개발 도구(editor.html)가 같은 기하 로직을 쓰도록 내보낸다. 두 벌로 두면 한쪽만
+   고쳐져 편집기와 카드의 판정이 어긋난다. 빌드본에도 이 줄이 그대로 들어가지만
+   HA 는 카드를 JavaScript Module 로 읽으므로 export 가 있어도 무해하다. */
+export { readBox, writeBox, boxHit, toViewBox, round1 };
