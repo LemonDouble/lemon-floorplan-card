@@ -659,7 +659,7 @@ class LemonFloorplanCard extends HTMLElement {
       const kind = AIR_KINDS[st?.attributes.device_class];
       if (!kind) continue;                         // 모르는 종류는 조용히 건너뛴다
       const chip = document.createElement("button");
-      chip.className = "chip";
+      chip.className = "item";
       chip.innerHTML = `<span></span><b></b><i></i>`;
       chip.querySelector("span").textContent = kind.label;
       chip.onclick = () => this._moreInfo(eid);
@@ -844,25 +844,31 @@ class LemonFloorplanCard extends HTMLElement {
                font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
 
         /* 공기질 줄. 측정기가 침실 하나뿐이라 방에 칠하지 않고 여기 모은다.
-           config.air 가 없으면 :empty 로 통째로 사라진다. */
-        .air { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 10px 4px; }
-        .air:empty { display: none; }
-        .air .chip {
-          display: inline-flex; align-items: baseline; gap: 5px;
-          border: 0; padding: 6px 11px; border-radius: 999px; cursor: pointer;
-          background: var(--secondary-background-color, #f1f3f6);
+           config.air 가 없으면 :empty 로 통째로 사라진다.
+
+           칩(배경 있는 pill)으로 만들면 항목이 셋만 돼도 카드 아래가 무거워진다.
+           방 이름 아래 온습도와 같은 문법의 담백한 한 줄로 둔다 — 평면도가 주인공이고
+           이건 곁들이는 정보다. */
+        .air {
+          display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px;
+          padding: 10px 12px 4px;
+          font: 500 12px/1.5 var(--ha-font-family-body, system-ui, sans-serif);
           color: var(--secondary-text-color);
-          font: 500 12px/1 var(--ha-font-family-body, system-ui, sans-serif);
         }
-        .air .chip:hover { filter: brightness(.96); }
-        .air .chip b { font: 600 14px/1 inherit; color: var(--primary-text-color); }
-        .air .chip i { font-style: normal; font-size: 11px; opacity: .75; }
+        .air:empty { display: none; }
+        .air .item {
+          display: inline-flex; align-items: baseline; gap: 4px;
+          border: 0; background: none; padding: 0; cursor: pointer;
+          font: inherit; color: inherit;
+        }
+        .air .item:hover b { text-decoration: underline; text-underline-offset: 3px; }
+        .air .item b { font: 600 14px/1 inherit; color: var(--primary-text-color); }
+        .air .item i { font-style: normal; font-size: 10px; opacity: .7; }
         /* 좋음·보통은 색을 주지 않는다. 늘 물들어 있으면 경고가 묻힌다 —
-           방 온도 틴트에서 쾌적 구간을 비워둔 것과 같은 이유다.
-           배경 대신 숫자에만 색을 넣는 건 다크/라이트 어느 쪽에서도 안전해서다. */
-        .air .chip[data-level="warn"] b { color: var(--fp-temp-warm, #ffa726); }
-        .air .chip[data-level="bad"]  b { color: var(--fp-temp-hot,  #ef5350); }
-        .air .chip[data-level="none"] b { opacity: .5; }
+           방 온도 틴트에서 쾌적 구간을 비워둔 것과 같은 이유다. */
+        .air .item[data-level="warn"] b { color: var(--fp-temp-warm, #ffa726); }
+        .air .item[data-level="bad"]  b { color: var(--fp-temp-hot,  #ef5350); }
+        .air .item[data-level="none"] b { opacity: .5; }
 
         /* 방 상태 틴트.
            .room 은 바닥·가구 위에 얹힌 투명 오버레이라, fill-opacity 만 올리면
