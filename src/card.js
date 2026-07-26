@@ -4,6 +4,8 @@
  * SVG 평면도 위에서 방을 탭하면 그 방의 기기 컨트롤이 팝업으로 열리는 카드.
  * 방 ↔ 기기 매핑은 하드코딩하지 않고 HA area 레지스트리에서 런타임에 끌어온다.
  *
+ * 설정 키는 README, 설계 근거와 함정은 notes/DEVELOP.md (로컬 전용) 에 있다.
+ *
  * 팝업 구조
  *   [자주 쓰는 것]  device 마다 대표 엔티티만 2단 타일로
  *   [전체 보기 (N)] 접힘. 펼치면 device 별로 묶인 전체 목록
@@ -13,24 +15,6 @@
  *     - 에어컨 device → climate 하나 (companion 스위치 10개는 접힘)
  *     - 2구 벽스위치 → switch 두 개 다 노출
  *   가 된다. rooms.<area>.primary 로 완전히 덮어쓸 수 있다.
- *
- * 설정 예시 (YAML)
- *   type: custom:lemon-floorplan-card
- *   floorplan: /local/floorplan.svg
- *   exclude_devices: ["EFM Networks ipTIME AX2004M", "집 전체"]
- *   exclude: [sensor.foo]
- *   show_env: true                                 # 방 이름 아래 온습도 (기본 켜짐)
- *   room_tint: temperature                         # 방 색: temperature(기본) | device | off
- *   temp_bands: {cold: 18, cool: 22, warm: 26, hot: 29}   # 온도 구간 경계 (℃)
- *   air: [sensor.co2, sensor.pm25]                 # 평면도 아래 공기질 줄 (device_class 로 해석)
- *   demote: [media_player.geosil_seupikeo]         # 자주 쓰는 것에서 빼기 (전체 보기엔 남음)
- *   popup_features:                                # 팝업 타일 feature 를 엔티티별로 교체
- *     climate.cimsil_eeokeon:
- *       - {type: climate-swing-modes, style: dropdown}
- *   rooms:
- *     geosil:
- *       primary: [climate.geosil_eeokeon, light.geosil_sopadeung]
- *       env: [sensor.geosil_temperature, sensor.geosil_humidity]   # 대표 온습도 못박기
  *
  * 의존하는 HA API
  *   hass.states / hass.callService / hass.callWS   — 공식 문서에 있는 것만 사용
@@ -53,7 +37,7 @@ const EMBEDDED_ASSETS = {}; /*__ASSETS__*/
  * 방 색(틴트)을 정하는 두 가지 방식.
  *
  *   temperature (기본)  방 색 = 그 방 온도. 기기 켜짐은 가구 이펙트가 알린다.
- *   device              방 색 = 켜진 기기 종류. v1.6 까지의 동작.
+ *   device              방 색 = 켜진 기기 종류.
  *   off                 방을 칠하지 않는다.
  *
  * 온도 방식으로 기본을 옮긴 이유: 조명은 어차피 가구가 발광해서 눈에 띄는데,
@@ -83,8 +67,10 @@ const bandsOf = (o = {}) => {
  * 방별로 나눌 데이터가 없고, 집이 작아 어차피 전체가 같은 상태로 봐도 된다.
  *
  * 경계는 위에서부터 v < max 를 처음 만족하는 칸. good/ok 는 색을 주지 않는다.
- * CO₂ 는 환기 권장선 1000ppm, PM 은 한국 환경부 등급(PM2.5 15/35/75,
- * PM10 30/80/150)을 따랐다.
+ * PM 은 한국 환경부 예보 등급(PM2.5 15/35/75, PM10 30/80/150)을 그대로 따랐다.
+ * CO₂ 1000ppm 은 표준이 아니라 관행적 기준이다 — ASHRAE 62 는 예전 판의 1000ppm
+ * 한계를 삭제했고 지금은 실외 대비 +700ppm 을 환기 제어 목적으로만 쓴다.
+ * VOC 는 독일 UBA 의 TVOC 등급을 따랐다. 출처는 notes/DEVELOP.md.
  */
 const AIR_KINDS = {
   carbon_dioxide:             { label: "CO₂",   bands: [[800, "good"], [1000, "ok"], [1500, "warn"], [Infinity, "bad"]] },
@@ -95,9 +81,7 @@ const AIR_KINDS = {
 };
 
 /** device 방식의 우선순위. 위에 있을수록 세다.
- *  예전에는 이 순서가 `tint = …` 와 `tint ||= …` 의 차이, 그리고 room.all 배열
- *  순서에 묻혀 있었다 (climate 는 마지막 것이, 나머지는 첫 번째 것이 이겼다).
- *  같은 결과를 내면서 순서를 눈에 보이게 꺼낸 표다. */
+ *  표로 꺼내 둔 이유는 우선순위가 코드 흐름이나 배열 순서에 묻히지 않게 하려는 것이다. */
 const DEVICE_TINT = [
   { tint: "heat",  match: (d, st) => d === "climate" && st.state === "heat" },
   { tint: "cool",  match: (d) => d === "climate" },
@@ -124,8 +108,8 @@ const OBJECT_ON = {
   binary_sensor: (s) => s.state === "on",        // 문·창문 열림
   lock:          (s) => s.state === "unlocked",
   // cover 는 일부러 뺐다. 커튼은 열린 것도 정상 상태라 발광시키면 늘 빛나고,
-  // 그러면 "켜짐" 과 구분이 안 된다. 대신 열림/닫힘 그림을 갈아끼운다
-  // (SVG 의 data-asset-closed, 아래 _paint).
+  // 그러면 "켜짐" 과 구분이 안 된다. 대신 좌우 두 폭으로 갈라 실제로 걷히게
+  // 만든다 (SVG 의 data-curtain, 아래 _wireCurtains).
 };
 
 /** 실제로 빛을 내는 가구. 켜지면 발광하고, 나머지는 테두리로만 알린다

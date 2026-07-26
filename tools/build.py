@@ -2,7 +2,7 @@
 """
 HACS 배포용 dist/ 를 만든다.
 
-  uv run --with pillow python tools/build.py
+  python3 tools/build.py
 
 HACS 는 plugin 릴리스에서 "레포 이름과 같은 .js" 파일 하나만 가져간다.
 dist 에 floorplan.svg 를 같이 넣어봤지만 받아가지 않았다 (/hacsfiles/.../floorplan.svg → 404).

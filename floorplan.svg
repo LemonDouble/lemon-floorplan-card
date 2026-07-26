@@ -15,7 +15,7 @@
 
     레이어 순서 (아래 → 위)
       fp-floor      바닥 재질. defs 의 방 도형을 <use> 로 재사용
-      fp-furniture  가구. <image> 를 여기에 넣는다 (지금은 비어 있음)
+      fp-furniture  가구. <image> 를 여기에 넣는다
       fp-rooms      히트영역 + 상태 틴트. 기본 투명, 카드가 data-tint 를 붙이면 물든다
       벽 / 창 / 단차 / 문
       fp-labels     방 이름 (+ 카드가 그 아래에 온습도 <text class="env"> 를 붙인다)
