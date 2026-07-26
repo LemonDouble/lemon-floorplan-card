@@ -42,7 +42,7 @@ ITEMS = {
                    "running between them, drawn as a long thin horizontal element",
     # 색을 안 박으면 거의 순백으로 그려져 누끼 3단계가 천에 구멍을 낸다
     # (실측 결과 피사체 순수 배경색 75.5%). 열린 커튼의 실제 평균색 #bcb8ae 로 맞춘다.
-    "curtain-closed":"a pair of window curtains fully CLOSED, seen from directly above: a straight "
+    "curtain-panel":"a pair of window curtains fully CLOSED, seen from directly above: a straight "
                    "curtain rail completely covered by dense soft fabric gathers running "
                    "continuously along its ENTIRE length - evenly spaced vertical pleat lines "
                    "from end to end, with NO gap and NO bare rail visible anywhere in the middle. "

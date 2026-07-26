@@ -155,6 +155,8 @@ const TOGGLEABLE = new Set([
 ]);
 const HOLD_MS = 500;      // 이 이상 누르고 있으면 길게 누른 것으로 본다
 const MOVE_TOL = 10;      // px. 이만큼 움직이면 스크롤로 보고 취소한다
+/** 커튼이 열렸을 때 한 폭이 차지하는 창 폭의 비율. 나머지는 창이 드러난다 */
+const CURTAIN_OPEN = 0.13;
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
@@ -222,17 +224,10 @@ async function mountPlan(container, config) {
   }
   if (!container.querySelector("svg")) throw new Error("평면도에서 <svg> 를 찾지 못했습니다.");
   const XLINK = "http://www.w3.org/1999/xlink";
-  const done = (p) => /^(?:[a-z]+:|\/\/|\/)/i.test(p);           // 절대 URL·data: 는 그대로
-  const abs = (p) => EMBEDDED_ASSETS[p] ?? new URL(p, base ?? location.href).href;
   for (const el of container.querySelectorAll("image")) {
-    // 상태에 따라 갈아끼울 대체 에셋(커튼 닫힘 등)도 같이 절대화해 둔다.
-    // href 보다 먼저 해야 한다 — 아래 continue 에 걸리면 여기까지 못 온다.
-    const alt = el.getAttribute("data-asset-closed");
-    if (alt && !done(alt)) el.setAttribute("data-asset-closed", abs(alt));
-
     const href = el.getAttribute("href") ?? el.getAttributeNS(XLINK, "href");
-    if (!href || done(href)) continue;
-    el.setAttribute("href", abs(href));
+    if (!href || /^(?:[a-z]+:|\/\/|\/)/i.test(href)) continue;   // 절대 URL·data: 는 그대로
+    el.setAttribute("href", EMBEDDED_ASSETS[href] ?? new URL(href, base ?? location.href).href);
     el.removeAttributeNS(XLINK, "href");
   }
 }
@@ -331,6 +326,7 @@ class LemonFloorplanCard extends HTMLElement {
       await Promise.all([this._loadSvg(), this._loadRegistry()]);
       this._wireRooms();
       this._wireObjects();
+      this._wireCurtains();
       this._wireLabels();
       this._wireAir();
       this._ready = true;
@@ -461,12 +457,7 @@ class LemonFloorplanCard extends HTMLElement {
       r.setAttribute("class", "hotspot");
       this._wirePress(r, eid);
       layer.appendChild(r);
-      this._objects.push({
-        img, eid,
-        light: LIGHT_ASSETS.has(assetOf(img.id)),
-        openHref: img.getAttribute("href"),                    // mountPlan 이 절대화한 값
-        closedHref: img.getAttribute("data-asset-closed"),     // 없으면 null
-      });
+      this._objects.push({ img, eid, light: LIGHT_ASSETS.has(assetOf(img.id)) });
     }
     svg.appendChild(layer);                            // 맨 위
   }
@@ -566,15 +557,18 @@ class LemonFloorplanCard extends HTMLElement {
 
     // 가구 하나하나도 자기 엔티티 상태를 표시한다.
     // 조명은 발광, 나머지는 도메인 색 테두리 — data-on 값이 그 구분이다.
+    // 커튼: 닫히면 두 폭이 창을 반씩 덮고, 열리면 양끝으로 물러난다
+    for (const c of this._curtains || []) {
+      const closed = hass.states[c.eid]?.state === "closed";
+      if (c.closed === closed) continue;               // 안 바뀌었으면 DOM 안 만짐
+      c.closed = closed;
+      const w = c.base.w * (closed ? 0.5 : CURTAIN_OPEN);
+      writeBox(c.panels[0], { ...c.base, w });
+      writeBox(c.panels[1], { ...c.base, w, x: c.base.x + c.base.w - w });
+    }
+
     for (const o of this._objects || []) {
       const st = hass.states[o.eid];
-
-      // 열림/닫힘 그림이 따로 있는 것(커튼)은 발광 대신 그림을 갈아끼운다
-      if (o.closedHref) {
-        const href = st?.state === "closed" ? o.closedHref : o.openHref;
-        if (o.href !== href) { o.href = href; o.img.setAttribute("href", href); }
-      }
-
       const rule = st && OBJECT_ON[dom(o.eid)];
       const tone = rule && rule(st) ? (o.light ? "light" : toneOf(o.eid, st)) : null;
       if (o.tone === tone) continue;                   // 안 바뀌었으면 DOM 안 만짐
@@ -751,6 +745,41 @@ class LemonFloorplanCard extends HTMLElement {
       out.push(`${round1(v)}${st.attributes.unit_of_measurement || ""}`);
     }
     return out.join(sep);
+  }
+
+  /**
+   * 커튼을 좌우 두 폭으로 갈라 실제로 걷히게 만든다.
+   *
+   * 열림·닫힘 그림 두 장을 갈아끼워도 봤는데, 작은 크기에서는 한쪽이 커튼봉,
+   * 다른 쪽이 골판지처럼 읽혀서 둘 다 커튼으로 안 보였다. 명도를 눌러 대비를
+   * 줘도 마찬가지였다 — 형태가 바뀌지 않으면 알아볼 수 없다.
+   *
+   * SVG 의 <image> 는 1개 그대로 둔다. 가구 편집기가 커튼을 네 조각으로 보면
+   * 안 되기 때문이고, 원본은 "창의 어디부터 어디까지"를 알려주는 기준으로만 쓴다.
+   * 한 폭 에셋을 폭에 맞춰 늘리므로 preserveAspectRatio="none" 이 필요하다
+   * (넓으면 펼쳐진 천, 좁으면 뭉친 천으로 읽힌다).
+   */
+  _wireCurtains() {
+    this._curtains = [];
+    const svg = this.shadowRoot.querySelector("#lemon-floorplan");
+    if (!svg) return;
+    for (const img of svg.querySelectorAll("#fp-furniture image[data-curtain]")) {
+      const eid = this._resolve(img.getAttribute("data-entity"));
+      if (!eid || !this._hass.states[eid]) continue;
+      const base = readBox(img);
+      img.style.display = "none";                      // 원본은 기준으로만
+      const panels = ["l", "r"].map((side) => {
+        const p = img.cloneNode();
+        p.id = `${img.id}-${side}`;
+        p.removeAttribute("data-entity");               // 핫스팟은 원본 것 하나로 충분
+        p.removeAttribute("data-curtain");
+        p.style.display = "";
+        p.setAttribute("preserveAspectRatio", "none");
+        img.parentNode.appendChild(p);
+        return p;
+      });
+      this._curtains.push({ eid, base, panels });
+    }
   }
 
   /**
