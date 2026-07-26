@@ -19,9 +19,11 @@
  *   floorplan: /local/floorplan.svg
  *   exclude_devices: ["EFM Networks ipTIME AX2004M", "집 전체"]
  *   exclude: [sensor.foo]
+ *   show_env: true                                 # 방 이름 아래 온습도 (기본 켜짐)
  *   rooms:
  *     geosil:
  *       primary: [climate.geosil_eeokeon, light.geosil_sopadeung]
+ *       env: [sensor.geosil_temperature, sensor.geosil_humidity]   # 대표 온습도 못박기
  *
  * 의존하는 HA API
  *   hass.states / hass.callService / hass.callWS   — 공식 문서에 있는 것만 사용
@@ -261,6 +263,7 @@ class LemonFloorplanCard extends HTMLElement {
       await Promise.all([this._loadSvg(), this._loadRegistry()]);
       this._wireRooms();
       this._wireObjects();
+      this._wireLabels();
       this._ready = true;
       this._paint();
     } catch (err) {
@@ -512,6 +515,14 @@ class LemonFloorplanCard extends HTMLElement {
       if (tone) o.img.setAttribute("data-on", tone);
       else o.img.removeAttribute("data-on");
     }
+
+    // 방 이름 아래 온·습도. 평면도는 좁아서 팝업보다 구분자를 줄인다.
+    for (const l of this._envLabels || []) {
+      const txt = this._envSummary(l.areaId, " · ");
+      if (l.txt === txt) continue;                     // 안 바뀌었으면 DOM 안 만짐
+      l.txt = txt;
+      l.el.textContent = txt;
+    }
   }
 
   // ── 팝업 ───────────────────────────────────────────────────
@@ -524,7 +535,7 @@ class LemonFloorplanCard extends HTMLElement {
 
     this._live = [];
     dlg.querySelector(".rn").textContent = this._areaName[areaId] || areaId;
-    dlg.querySelector(".env").textContent = this._envSummary(room);
+    dlg.querySelector(".env").textContent = this._envSummary(areaId);
     body.innerHTML = "";
 
     if (!room || !room.count) {
@@ -573,18 +584,65 @@ class LemonFloorplanCard extends HTMLElement {
     dlg.showModal();
   }
 
-  /** 방 온습도를 헤더에 한 줄로. 센서가 전체보기에 묻히지 않게 하는 용도 */
-  _envSummary(room) {
-    if (!room) return "";
-    const hass = this._hass, out = [];
+  /**
+   * 방의 대표 온·습도 센서를 고른다.
+   *
+   * 자동 탐색은 device_class 로 방 안의 첫 센서를 집는데, 방에 온도계가 둘 이상이면
+   * (전용 온습도계 + 제습기·공기청정기 내장 센서) 어느 쪽이 잡힐지가 device 이름
+   * 정렬 순서에 좌우된다. 기기 내장 센서는 실온과 몇 도씩 어긋나므로, 값이 중요한
+   * 방은 rooms.<area>.env 로 못박는다.
+   */
+  _envOf(areaId) {
+    const room = this._rooms?.[areaId];
+    const hass = this._hass;
+    if (!room || !hass) return {};
+    const want = this._config.rooms?.[areaId]?.env;
+    const wanted = want ? (Array.isArray(want) ? want : [want]) : null;
+    const out = {};
     for (const key of ["temperature", "humidity"]) {
-      const eid = room.all.find((e) =>
-        dom(e) === "sensor" && hass.states[e]?.attributes.device_class === key);
-      if (!eid) continue;
-      const st = hass.states[eid];
-      out.push(`${Math.round(parseFloat(st.state) * 10) / 10}${st.attributes.unit_of_measurement || ""}`);
+      const match = (e) => hass.states[e]?.attributes.device_class === key;
+      const eid = (wanted && wanted.find(match)) ||
+                  room.all.find((e) => dom(e) === "sensor" && match(e));
+      if (eid) out[key] = hass.states[eid];
     }
-    return out.join("  ·  ");
+    return out;
+  }
+
+  /** 방 온습도를 한 줄로. 팝업 헤더와 평면도 라벨이 함께 쓴다 */
+  _envSummary(areaId, sep = "  ·  ") {
+    const env = this._envOf(areaId), out = [];
+    for (const key of ["temperature", "humidity"]) {
+      const st = env[key];
+      if (!st) continue;
+      const v = parseFloat(st.state);
+      if (!Number.isFinite(v)) continue;              // unavailable 은 건너뛴다
+      out.push(`${round1(v)}${st.attributes.unit_of_measurement || ""}`);
+    }
+    return out.join(sep);
+  }
+
+  /**
+   * 방 이름 라벨 아래에 온·습도를 한 줄 붙인다.
+   *
+   * 라벨과 방의 연결은 SVG 의 data-area 다 (room-* id 와 같은 계약). 라벨에
+   * data-area 가 없으면 그 방은 조용히 건너뛴다 — 센서가 없는 방도 마찬가지라
+   * 화장실·현관처럼 잴 것이 없는 방에는 빈 줄이 생기지 않는다.
+   */
+  _wireLabels() {
+    this._envLabels = [];
+    if (this._config.show_env === false) return;
+    const svg = this.shadowRoot.querySelector("#lemon-floorplan");
+    if (!svg) return;
+    for (const label of svg.querySelectorAll("#fp-labels text[data-area]")) {
+      const t = document.createElementNS(svg.namespaceURI, "text");
+      t.setAttribute("class", "env");
+      t.setAttribute("x", label.getAttribute("x"));
+      // 라벨은 dominant-baseline:central 이라 y 가 글자 중심이다. 그 아래로 내린다.
+      t.setAttribute("y", String(parseFloat(label.getAttribute("y") || 0) +
+                                 (label.classList.contains("sm") ? 17 : 21)));
+      label.parentNode.appendChild(t);
+      this._envLabels.push({ areaId: label.getAttribute("data-area"), el: t });
+    }
   }
 
   async _helpers() {

@@ -34,6 +34,10 @@ const DEVICES = [
   {id:"dev_geosil_sofa", area_id:"geosil", name:"거실 소파등"},
   {id:"dev_geosil_ac",   area_id:"geosil", name:"거실 에어컨"},
   {id:"dev_geosil_th",   area_id:"geosil", name:"거실 온습도 센서"},
+  // 이름이 "거실 …" 보다 앞이라 자동 탐색이 이쪽을 먼저 집는다.
+  // 기기 내장 온도는 실온과 3도쯤 어긋나므로 rooms.geosil.env 가 이겨야 한다.
+  {id:"dev_dehum",       area_id:"geosil", name:"가전 제습기"},
+  {id:"dev_cimsil_th",   area_id:"cimsil", name:"침실 온습도 센서"},
   {id:"dev_router",      area_id:"geosil", name:"EFM Networks ipTIME AX2004M"},
   {id:"dev_cimsil_ac",   area_id:"cimsil", name:"침실 벽걸이 에어컨"},
   {id:"dev_cimsil_light",area_id:"cimsil", name:"침실 간접등"},
@@ -50,6 +54,12 @@ const ENTITIES = [
   {entity_id:"climate.geosil_eeokeon",           device_id:"dev_geosil_ac"},
   {entity_id:"select.geosil_eeokeon_pungryang",  device_id:"dev_geosil_ac"},
   {entity_id:"sensor.geosil_onseubdo_senseo_temperature_2", device_id:"dev_geosil_th"},
+  {entity_id:"sensor.geosil_onseubdo_senseo_humidity_2",    device_id:"dev_geosil_th"},
+  {entity_id:"sensor.ldh_7700_dehumidifier_temperature",    device_id:"dev_dehum"},
+  {entity_id:"sensor.ldh_7700_dehumidifier_humidity",       device_id:"dev_dehum"},
+  // 침실은 env 를 안 적었다 — 자동 탐색 경로가 살아 있는지 확인하는 쪽
+  {entity_id:"sensor.cimsil_onseubdo_senseo_temperature",   device_id:"dev_cimsil_th"},
+  {entity_id:"sensor.cimsil_onseubdo_senseo_humidity",      device_id:"dev_cimsil_th"},
   // entity_category 가 붙은 건 걸러져야 함
   {entity_id:"sensor.0x385b44fffec08207_linkquality", device_id:"dev_geosil_sw", entity_category:"diagnostic"},
   {entity_id:"button.geosil_sopadeung_identify", device_id:"dev_geosil_sofa", entity_category:"config"},
@@ -124,8 +134,16 @@ Object.assign(STATES, {
   "binary_sensor.0xa4c138816d4b88e1_contact": S("off",{friendly_name:"현관문"}),
 });
 
-// 온습도 센서에 device_class 를 달아 헤더 요약이 뜨는지 확인
+// 온습도 센서. device_class 로 잡히므로 friendly_name 은 상관없다.
+Object.assign(STATES, {
+  "sensor.geosil_onseubdo_senseo_humidity_2": S("59.9", {friendly_name:"거실 습도", unit_of_measurement:"%", device_class:"humidity"}),
+  "sensor.ldh_7700_dehumidifier_temperature": S("25",   {friendly_name:"제습기 온도", unit_of_measurement:"°C", device_class:"temperature"}),
+  "sensor.ldh_7700_dehumidifier_humidity":    S("76",   {friendly_name:"제습기 습도", unit_of_measurement:"%", device_class:"humidity"}),
+  "sensor.cimsil_onseubdo_senseo_temperature":S("27.6", {friendly_name:"침실 온도", unit_of_measurement:"°C", device_class:"temperature"}),
+  "sensor.cimsil_onseubdo_senseo_humidity":   S("68.3", {friendly_name:"침실 습도", unit_of_measurement:"%", device_class:"humidity"}),
+});
 STATES["sensor.geosil_onseubdo_senseo_temperature_2"].attributes.device_class = "temperature";
+STATES["sensor.geosil_onseubdo_senseo_temperature_2"].state = "28.3";
 const calls = [];
 const hass = {
   states: STATES,
@@ -144,7 +162,9 @@ card.setConfig({
   title: "우리집",
   exclude_devices: ["EFM Networks ipTIME AX2004M"],
   rooms: {
-    geosil: { pin: ["switch.geosil_eeokeon_mupung", "select.geosil_eeokeon_pungryang"] },
+    geosil: { pin: ["switch.geosil_eeokeon_mupung", "select.geosil_eeokeon_pungryang"],
+              env: ["sensor.geosil_onseubdo_senseo_temperature_2",
+                    "sensor.geosil_onseubdo_senseo_humidity_2"] },
     cimsil: { pin: ["switch.cimsil_byeokgeori_eeokeon_mupung",
                     "select.cimsil_byeokgeori_eeokeon_pungryang",
                     "select.cimsil_byeokgeori_eeokeon_baram_banghyang"] },

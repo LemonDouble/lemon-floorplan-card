@@ -18,12 +18,14 @@
       fp-furniture  가구. <image> 를 여기에 넣는다 (지금은 비어 있음)
       fp-rooms      히트영역 + 상태 틴트. 기본 투명, 카드가 data-tint 를 붙이면 물든다
       벽 / 창 / 단차 / 문
-      fp-labels     방 이름
+      fp-labels     방 이름 (+ 카드가 그 아래에 온습도 <text class="env"> 를 붙인다)
 
     방 도형은 defs 에 한 번만 정의하고 두 레이어가 <use> 로 공유한다.
     좌표를 고칠 때 한 군데만 고치면 된다.
 
-    <use id="room-*"> 의 id 는 HA area_id 와 1:1 이며 카드와의 유일한 계약이다.
+    카드와의 계약은 area_id 두 군데뿐이다.
+      <use id="room-*">        방 히트영역·틴트   (id 가 area_id)
+      <text data-area="*">     방 이름 라벨       (온습도를 붙일 자리. 없으면 안 붙는다)
   -->
 
   <style>
@@ -67,6 +69,15 @@
       pointer-events: none; user-select: none;
     }
     .label.sm { font-size: 19px; }
+
+    /* 방 이름 아래 온·습도. 카드가 런타임에 채운다 (data-area 가 붙은 라벨만).
+       방 이름보다 한 단계 작고 흐리게 — 평면도를 읽는 데 방해되면 안 된다. */
+    .env {
+      fill: var(--fp-label); opacity: .75;
+      font: 500 17px/1 system-ui, -apple-system, "Noto Sans KR", sans-serif;
+      text-anchor: middle; dominant-baseline: central;
+      pointer-events: none; user-select: none;
+    }
 
     #fp-furniture image { pointer-events: none; }
   </style>
@@ -241,13 +252,13 @@
 
   <!-- ── 라벨 ───────────────────────────────────────────────── -->
   <g id="fp-labels">
-    <text class="label"    x="440" y="98">앞 베란다</text>
-    <text class="label"    x="300" y="240">거실</text>
-    <text class="label"    x="625" y="270">침실</text>
-    <text class="label sm" x="130" y="415">화장실</text>
-    <text class="label sm" x="228" y="487">현관</text>
-    <text class="label"    x="525" y="525">주방</text>
-    <text class="label"    x="740" y="525">작은방</text>
-    <text class="label"    x="645" y="702">뒷베란다</text>
+    <text class="label"    data-area="ap_beranda"  x="440" y="98">앞 베란다</text>
+    <text class="label"    data-area="geosil"      x="300" y="240">거실</text>
+    <text class="label"    data-area="cimsil"      x="625" y="270">침실</text>
+    <text class="label sm" data-area="hwajangsil"  x="130" y="415">화장실</text>
+    <text class="label sm" data-area="hyeongwan"   x="228" y="487">현관</text>
+    <text class="label"    data-area="jubang"      x="525" y="525">주방</text>
+    <text class="label"    data-area="jageunbang"  x="740" y="525">작은방</text>
+    <text class="label"    data-area="dwi_beranda" x="645" y="702">뒷베란다</text>
   </g>
 </svg>

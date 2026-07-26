@@ -44,9 +44,17 @@ Settings → Dashboards → ⋮ → Resources 에서 `/local/lemon-floorplan-car
 | `aliases` | `@key` → 실제 entity_id. → [§5](#5-공개-저장소와-별칭) |
 | `exclude_devices` | 방 팝업에서 통째로 뺄 device (id 또는 이름) |
 | `exclude` | 방 팝업에서 뺄 엔티티 |
+| `show_env` | 방 이름 아래 온·습도 표시. 기본 켜짐, `false` 로 끈다 |
 | `rooms.<area>.pin` | 방 팝업 "자주 쓰는 것" 에 **추가** |
 | `rooms.<area>.primary` | "자주 쓰는 것" 을 통째로 **교체** (`pin` 무시) |
+| `rooms.<area>.env` | 그 방의 대표 온·습도 센서를 못박는다 (아래 주의) |
 | `layout` | 가구 위치 덮어쓰기. 카드 편집기가 자동으로 기록 |
+
+> **`env` 를 언제 적어야 하나.** 안 적으면 방 안에서 `device_class` 가
+> temperature/humidity 인 센서를 자동으로 찾는데, 방에 온도계가 둘 이상이면
+> (전용 온습도계 + 제습기·공기청정기 내장 센서) **어느 쪽이 잡힐지가 device 이름
+> 정렬 순서에 달린다.** 기기 내장 온도는 실온과 몇 도씩 어긋난다 — 이 집 거실은
+> 온습도계 28.3℃ 인데 제습기 내장은 25℃ 였다. 방에 온도계가 하나뿐이면 안 적어도 된다.
 
 현재 이 집 설정 (대시보드 `홈` → 첫 섹션):
 
@@ -59,9 +67,14 @@ aliases:                    # Zigbee IEEE 가 박힌 ID 7개
   ceiling-geosil: switch.0x...._top
   ...
 rooms:
-  geosil: { pin: [switch.geosil_eeokeon_mupung, select.geosil_eeokeon_pungryang] }
-  cimsil: { pin: [...무풍, 풍량, 바람 방향] }
+  geosil: { pin: [switch.geosil_eeokeon_mupung, select.geosil_eeokeon_pungryang],
+            env: [...거실 온습도계] }     # 제습기 내장 온도가 잡히지 않게
+  cimsil: { pin: [...무풍, 풍량, 바람 방향],
+            env: [...침실 온습도계] }     # 공기청정기 내장 온도가 잡히지 않게
 ```
+
+> 이 집 온습도계는 entity_id 와 실제 위치가 어긋나 있다 (`geosil…temperature` 가
+> 침실). `env` 에 적을 때 ID 만 보고 고르지 말 것 — [§6](#이-집-ha-특유) 참고.
 
 ---
 
@@ -98,7 +111,12 @@ python3 -m http.server 8899        # 저장소 루트에서
 
 `preview.html` 에 "좌표 찍기" 가 있다 (클릭하면 viewBox 좌표 + % 출력).
 
-방 polygon 의 id 가 HA `area_id` 와 1:1 이어야 한다. 이게 카드와의 유일한 계약이다.
+카드와의 계약은 `area_id` 두 군데뿐이다.
+
+| 무엇 | 어디 | 없으면 |
+|---|---|---|
+| 방 polygon 의 `id` (`room-<area_id>`) | `fp-rooms` | 그 방은 눌러도 팝업이 안 뜬다 |
+| 방 이름 라벨의 `data-area` | `fp-labels` | 그 방 이름 아래에 온습도가 안 붙는다 |
 
 ### (d) 가구를 추가하고 싶다 → `tools/gen_furniture.py`
 
@@ -158,7 +176,7 @@ fp-floor       바닥 재질. SVG <pattern> (마루/타일) — 이미지 0개, 
 fp-furniture   가구 <image>. pointer-events:none
 fp-rooms       방 히트영역 + 상태 틴트. 가구를 덮어야 하므로 가구보다 위
 벽 / 창 / 단차 / 문
-fp-labels      방 이름
+fp-labels      방 이름 + 온습도 (온습도 <text class="env"> 는 카드가 런타임 생성)
 fp-hotspots    ← 카드가 런타임 생성. data-entity 있는 가구만 투명 rect
 ```
 
