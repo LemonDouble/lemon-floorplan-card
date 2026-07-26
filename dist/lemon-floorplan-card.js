@@ -22,6 +22,7 @@
  *   show_env: true                                 # 방 이름 아래 온습도 (기본 켜짐)
  *   room_tint: temperature                         # 방 색: temperature(기본) | device | off
  *   temp_bands: {cold: 18, cool: 22, warm: 26, hot: 29}   # 온도 구간 경계 (℃)
+ *   air: [sensor.co2, sensor.pm25]                 # 평면도 아래 공기질 줄 (device_class 로 해석)
  *   rooms:
  *     geosil:
  *       primary: [climate.geosil_eeokeon, light.geosil_sopadeung]
@@ -69,6 +70,24 @@ const bandsOf = (o = {}) => {
     { max: t.hot,      tint: "temp-warm" },   // 덥다
     { max: Infinity,   tint: "temp-hot"  },   // 많이 덥다
   ];
+};
+
+/**
+ * 공기질 칩. device_class 로 라벨·단위·등급을 정하므로 설정에는 엔티티만 적는다.
+ *
+ * 방마다 칠하지 않고 평면도 아래 한 줄로 빼는 이유: 측정기가 침실 하나뿐이라
+ * 방별로 나눌 데이터가 없고, 집이 작아 어차피 전체가 같은 상태로 봐도 된다.
+ *
+ * 경계는 위에서부터 v < max 를 처음 만족하는 칸. good/ok 는 색을 주지 않는다.
+ * CO₂ 는 환기 권장선 1000ppm, PM 은 한국 환경부 등급(PM2.5 15/35/75,
+ * PM10 30/80/150)을 따랐다.
+ */
+const AIR_KINDS = {
+  carbon_dioxide:             { label: "CO₂",   bands: [[800, "good"], [1000, "ok"], [1500, "warn"], [Infinity, "bad"]] },
+  pm25:                       { label: "PM2.5", bands: [[16,  "good"], [36,   "ok"], [76,   "warn"], [Infinity, "bad"]] },
+  pm10:                       { label: "PM10",  bands: [[31,  "good"], [81,   "ok"], [151,  "warn"], [Infinity, "bad"]] },
+  pm1:                        { label: "PM1.0", bands: [[16,  "good"], [36,   "ok"], [76,   "warn"], [Infinity, "bad"]] },
+  volatile_organic_compounds: { label: "VOC",   bands: [[0.3, "good"], [1,    "ok"], [3,    "warn"], [Infinity, "bad"]] },
 };
 
 /** device 방식의 우선순위. 위에 있을수록 세다.
@@ -304,6 +323,7 @@ class LemonFloorplanCard extends HTMLElement {
       this._wireRooms();
       this._wireObjects();
       this._wireLabels();
+      this._wireAir();
       this._ready = true;
       this._paint();
     } catch (err) {
@@ -549,6 +569,21 @@ class LemonFloorplanCard extends HTMLElement {
       l.txt = txt;
       l.el.textContent = txt;
     }
+
+    // 평면도 아래 공기질 칩
+    for (const c of this._airChips || []) {
+      const st = hass.states[c.eid];
+      const v = st ? parseFloat(st.state) : NaN;
+      const ok = Number.isFinite(v);
+      const level = ok ? c.kind.bands.find(([max]) => v < max)[1] : "none";
+      const unit = (ok && st.attributes.unit_of_measurement) || "";
+      const sig = `${level}|${ok ? round1(v) : "—"}|${unit}`;
+      if (c.sig === sig) continue;
+      c.sig = sig;
+      c.chip.dataset.level = level;
+      c.chip.querySelector("b").textContent = ok ? round1(v) : "—";
+      c.chip.querySelector("i").textContent = unit;
+    }
   }
 
   // ── 팝업 ───────────────────────────────────────────────────
@@ -608,6 +643,29 @@ class LemonFloorplanCard extends HTMLElement {
     body.appendChild(det);
 
     dlg.showModal();
+  }
+
+  /**
+   * 평면도 아래 공기질 줄을 만든다. config.air 에 적은 순서대로 칩이 놓인다.
+   * 칩은 한 번만 만들고 _paint 가 값만 갈아끼운다 (매번 새로 그리면 클릭이 끊긴다).
+   */
+  _wireAir() {
+    this._airChips = [];
+    const row = this.shadowRoot.querySelector(".air");
+    if (!row) return;
+    row.textContent = "";
+    for (const eid of this._config.air || []) {
+      const st = this._hass.states[eid];
+      const kind = AIR_KINDS[st?.attributes.device_class];
+      if (!kind) continue;                         // 모르는 종류는 조용히 건너뛴다
+      const chip = document.createElement("button");
+      chip.className = "chip";
+      chip.innerHTML = `<span></span><b></b><i></i>`;
+      chip.querySelector("span").textContent = kind.label;
+      chip.onclick = () => this._moreInfo(eid);
+      row.appendChild(chip);
+      this._airChips.push({ eid, kind, chip });
+    }
   }
 
   /** 방 하나의 틴트 값. 없으면 null (칠하지 않음) */
@@ -785,6 +843,27 @@ class LemonFloorplanCard extends HTMLElement {
         .err { padding: 16px; color: var(--error-color, #db4437);
                font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
 
+        /* 공기질 줄. 측정기가 침실 하나뿐이라 방에 칠하지 않고 여기 모은다.
+           config.air 가 없으면 :empty 로 통째로 사라진다. */
+        .air { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 10px 4px; }
+        .air:empty { display: none; }
+        .air .chip {
+          display: inline-flex; align-items: baseline; gap: 5px;
+          border: 0; padding: 6px 11px; border-radius: 999px; cursor: pointer;
+          background: var(--secondary-background-color, #f1f3f6);
+          color: var(--secondary-text-color);
+          font: 500 12px/1 var(--ha-font-family-body, system-ui, sans-serif);
+        }
+        .air .chip:hover { filter: brightness(.96); }
+        .air .chip b { font: 600 14px/1 inherit; color: var(--primary-text-color); }
+        .air .chip i { font-style: normal; font-size: 11px; opacity: .75; }
+        /* 좋음·보통은 색을 주지 않는다. 늘 물들어 있으면 경고가 묻힌다 —
+           방 온도 틴트에서 쾌적 구간을 비워둔 것과 같은 이유다.
+           배경 대신 숫자에만 색을 넣는 건 다크/라이트 어느 쪽에서도 안전해서다. */
+        .air .chip[data-level="warn"] b { color: var(--fp-temp-warm, #ffa726); }
+        .air .chip[data-level="bad"]  b { color: var(--fp-temp-hot,  #ef5350); }
+        .air .chip[data-level="none"] b { opacity: .5; }
+
         /* 방 상태 틴트.
            .room 은 바닥·가구 위에 얹힌 투명 오버레이라, fill-opacity 만 올리면
            아래 레이어가 비쳐 보인다 (fill 을 덮어쓰던 예전 방식과 다르다) */
@@ -914,6 +993,7 @@ class LemonFloorplanCard extends HTMLElement {
       <ha-card class="card">
         ${this._config.title ? `<div class="title">${this._esc(this._config.title)}</div>` : ""}
         <div class="plan"></div>
+        <div class="air"></div>
       </ha-card>
 
       <dialog>
