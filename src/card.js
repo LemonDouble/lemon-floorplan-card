@@ -20,6 +20,8 @@
  *   exclude_devices: ["EFM Networks ipTIME AX2004M", "집 전체"]
  *   exclude: [sensor.foo]
  *   show_env: true                                 # 방 이름 아래 온습도 (기본 켜짐)
+ *   room_tint: temperature                         # 방 색: temperature(기본) | device | off
+ *   temp_bands: {cold: 18, cool: 22, warm: 26, hot: 29}   # 온도 구간 경계 (℃)
  *   rooms:
  *     geosil:
  *       primary: [climate.geosil_eeokeon, light.geosil_sopadeung]
@@ -42,7 +44,45 @@ const EMBEDDED_SVG = ""; /*__FLOORPLAN__*/
    천장등처럼 같은 파일을 여러 번 쓰는 오브젝트가 많아서다 (박아 넣으면 7벌이 들어간다). */
 const EMBEDDED_ASSETS = {}; /*__ASSETS__*/
 
-/** 방 색을 결정할 때 "켜짐"으로 볼 도메인 */
+/**
+ * 방 색(틴트)을 정하는 두 가지 방식.
+ *
+ *   temperature (기본)  방 색 = 그 방 온도. 기기 켜짐은 가구 이펙트가 알린다.
+ *   device              방 색 = 켜진 기기 종류. v1.6 까지의 동작.
+ *   off                 방을 칠하지 않는다.
+ *
+ * 온도 방식으로 기본을 옮긴 이유: 조명은 어차피 가구가 발광해서 눈에 띄는데,
+ * 온도는 숫자를 읽기 전에는 알 수 없었다. 방 전체를 물들이는 자리는 "읽지 않고도
+ * 알아야 하는 것" 에 주는 편이 낫다.
+ */
+
+/** 온도 구간. 위에서부터 v < max 를 처음 만족하는 칸이 이긴다.
+ *  쾌적 구간(tint: null)은 일부러 칠하지 않는다 — 늘 물들어 있으면 경고가 묻힌다.
+ *  경계값은 위 칸에 속한다 (26.0 은 쾌적이 아니라 warm). */
+const TEMP_BANDS = { cold: 18, cool: 22, warm: 26, hot: 29 };
+const bandsOf = (o = {}) => {
+  const t = { ...TEMP_BANDS, ...o };
+  return [
+    { max: t.cold,     tint: "temp-cold" },   // 춥다
+    { max: t.cool,     tint: "temp-cool" },   // 서늘하다
+    { max: t.warm,     tint: null        },   // 쾌적
+    { max: t.hot,      tint: "temp-warm" },   // 덥다
+    { max: Infinity,   tint: "temp-hot"  },   // 많이 덥다
+  ];
+};
+
+/** device 방식의 우선순위. 위에 있을수록 세다.
+ *  예전에는 이 순서가 `tint = …` 와 `tint ||= …` 의 차이, 그리고 room.all 배열
+ *  순서에 묻혀 있었다 (climate 는 마지막 것이, 나머지는 첫 번째 것이 이겼다).
+ *  같은 결과를 내면서 순서를 눈에 보이게 꺼낸 표다. */
+const DEVICE_TINT = [
+  { tint: "heat",  match: (d, st) => d === "climate" && st.state === "heat" },
+  { tint: "cool",  match: (d) => d === "climate" },
+  { tint: "media", match: (d) => d === "media_player" },
+  { tint: "warm",  match: () => true },
+];
+
+/** 방 색을 결정할 때 "켜짐"으로 볼 도메인 (device 방식 전용) */
 const ACTIVE_RULES = {
   light:        (s) => s.state === "on",
   switch:       (s) => s.state === "on",
@@ -482,23 +522,9 @@ class LemonFloorplanCard extends HTMLElement {
 
     for (const el of this.shadowRoot.querySelectorAll(".plan .room")) {
       const areaId = el.id.replace(/^room-/, "");
-      const ids = this._rooms[areaId]?.all || [];
-
-      let tint = null, on = 0;
-      for (const eid of ids) {
-        const st = hass.states[eid];
-        if (!st) continue;
-        const rule = ACTIVE_RULES[dom(eid)];
-        if (!rule || !rule(st)) continue;
-        on++;
-        if (dom(eid) === "climate") tint = st.state === "heat" ? "heat" : "cool";
-        else if (dom(eid) === "media_player") tint ||= "media";
-        else tint ||= "warm";
-      }
-
-      const sig = `${tint}|${on}`;
-      if (this._sig[areaId] === sig) continue;      // 안 바뀌었으면 DOM 안 만짐
-      this._sig[areaId] = sig;
+      const tint = this._roomTint(areaId);
+      if (this._sig[areaId] === tint) continue;     // 안 바뀌었으면 DOM 안 만짐
+      this._sig[areaId] = tint;
 
       if (tint) el.setAttribute("data-tint", tint);
       else el.removeAttribute("data-tint");
@@ -582,6 +608,33 @@ class LemonFloorplanCard extends HTMLElement {
     body.appendChild(det);
 
     dlg.showModal();
+  }
+
+  /** 방 하나의 틴트 값. 없으면 null (칠하지 않음) */
+  _roomTint(areaId) {
+    const mode = this._config.room_tint ?? "temperature";
+    if (mode === "off") return null;
+    if (mode === "device") return this._deviceTint(areaId);
+
+    const st = this._envOf(areaId).temperature;
+    const v = st ? parseFloat(st.state) : NaN;
+    if (!Number.isFinite(v)) return null;           // 센서 없는 방은 안 칠한다
+    return bandsOf(this._config.temp_bands).find((b) => v < b.max)?.tint ?? null;
+  }
+
+  /** 켜진 기기 종류로 정하던 예전 방식. DEVICE_TINT 표의 순서가 우선순위다. */
+  _deviceTint(areaId) {
+    const hass = this._hass;
+    let best = DEVICE_TINT.length;
+    for (const eid of this._rooms?.[areaId]?.all || []) {
+      const st = hass.states[eid];
+      const d = dom(eid);
+      const rule = st && ACTIVE_RULES[d];
+      if (!rule || !rule(st)) continue;
+      const i = DEVICE_TINT.findIndex((r) => r.match(d, st));
+      if (i >= 0 && i < best) best = i;             // 배열 순서와 무관하게 가장 센 것
+    }
+    return DEVICE_TINT[best]?.tint ?? null;
   }
 
   /**
@@ -744,6 +797,15 @@ class LemonFloorplanCard extends HTMLElement {
            냉방색 #2196f3 과 거의 같은 파랑이라 방 색만 보고는 에어컨인지 TV 인지 못 가린다. */
         .plan svg .room[data-tint="media"] { fill: var(--purple-color, #926bc7); }
 
+        /* 온도 틴트 (room_tint: temperature).
+           기기 틴트와 달리 늘 켜져 있으므로 한 단계 옅게 깐다. 쾌적 구간은 아예
+           칠하지 않으니(TEMP_BANDS 참고) 색이 보인다는 것 자체가 이미 신호다. */
+        .plan svg .room[data-tint^="temp-"]    { fill-opacity: .17; }
+        .plan svg .room[data-tint="temp-cold"] { fill: var(--fp-temp-cold, #1e88e5); }
+        .plan svg .room[data-tint="temp-cool"] { fill: var(--fp-temp-cool, #4fc3f7); }
+        .plan svg .room[data-tint="temp-warm"] { fill: var(--fp-temp-warm, #ffa726); }
+        .plan svg .room[data-tint="temp-hot"]  { fill: var(--fp-temp-hot,  #ef5350); fill-opacity: .23; }
+
         /* 엔티티가 연결된 가구: 투명 히트영역이 맨 위에 깔린다 */
         .plan svg .hotspot {
           fill: var(--state-icon-active-color, #f9a825); fill-opacity: 0;
@@ -763,14 +825,19 @@ class LemonFloorplanCard extends HTMLElement {
            달라져도 굵기 비율이 유지된다 — 모바일에서 따로 손볼 게 없다.
            같은 그림자를 두 번 겹치는 건 흐릿한 후광 대신 진한 윤곽을 얻으려는 것. */
         .plan svg #fp-furniture image { transition: filter .25s ease; }
+        /* 방 색이 온도를 맡게 되면서 "무엇이 켜져 있나" 는 전적으로 가구 몫이 됐다.
+           그래서 예전(2+2, 5+10)보다 한 단계씩 세게 준다. brightness 를 함께 올리는
+           것은 그림자가 닿지 않는 실루엣 안쪽까지 살아나게 하려는 것 — 테두리만
+           밝으면 작은 기기는 멀리서 켜짐이 안 보인다. */
         .plan svg #fp-furniture image[data-on] {
           --fp-tone: var(--state-icon-active-color, #f9a825);
-          filter: drop-shadow(0 0 2px var(--fp-tone)) drop-shadow(0 0 2px var(--fp-tone));
+          filter: drop-shadow(0 0 3px var(--fp-tone)) drop-shadow(0 0 3px var(--fp-tone))
+                  brightness(1.06);
         }
-        /* 조명은 예전 그대로 넓게 발광 */
+        /* 조명은 실제로 빛을 내니 넓게 발광 */
         .plan svg #fp-furniture image[data-on="light"] {
           --fp-tone: var(--state-light-active-color, #ffc107);
-          filter: drop-shadow(0 0 5px var(--fp-tone)) drop-shadow(0 0 10px var(--fp-tone));
+          filter: drop-shadow(0 0 6px var(--fp-tone)) drop-shadow(0 0 16px var(--fp-tone));
         }
         .plan svg #fp-furniture image[data-on="cool"]  { --fp-tone: var(--state-climate-cool-color, #2196f3); }
         .plan svg #fp-furniture image[data-on="heat"]  { --fp-tone: var(--state-climate-heat-color, #ff6f22); }
