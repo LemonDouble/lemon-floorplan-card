@@ -45,6 +45,8 @@ Settings → Dashboards → ⋮ → Resources 에서 `/local/lemon-floorplan-car
 | `aliases` | `@key` → 실제 entity_id. → [§5](#5-공개-저장소와-별칭) |
 | `exclude_devices` | 방 팝업에서 통째로 뺄 device (id 또는 이름) |
 | `exclude` | 방 팝업에서 뺄 엔티티 |
+| `demote` | "자주 쓰는 것" 에서만 뺄 엔티티. 전체 보기에는 남는다 |
+| `popup_features` | 팝업 타일의 feature 목록을 엔티티별로 **교체** (`entity_id: [feature, …]`) |
 | `show_env` | 방 이름 아래 온·습도 표시. 기본 켜짐, `false` 로 끈다 |
 | `room_tint` | 방 색을 무엇으로 정할지. `temperature`(기본) / `device` / `off` → [§4](#방-색은-온도다) |
 | `temp_bands` | 온도 구간 경계(℃). 기본 `{cold: 18, cool: 22, warm: 26, hot: 29}` |
@@ -70,12 +72,26 @@ exclude_devices:            # 공유기 센서 13개, 중복 TV device 등
 aliases:                    # Zigbee IEEE 가 박힌 ID 7개
   ceiling-geosil: switch.0x...._top
   ...
+demote:                     # 스피커는 자주 쓰는 것 대신 전체 보기로
+  - media_player.geosil_seupikeo
+  - media_player.cimsil_seupikeo
+  - media_player.jubang_seupikeo
+  - media_player.jib_jeonce
+popup_features:             # 벽걸이(침실)만 팬 회전(스윙)까지 노출
+  climate.cimsil_byeokgeori_eeokeon_local:
+    - {type: climate-hvac-modes, style: dropdown}
+    - {type: target-temperature}
+    - {type: climate-fan-modes, style: dropdown}
+    - {type: climate-preset-modes, style: dropdown}
+    - {type: climate-swing-modes, style: dropdown}
 rooms:
-  geosil: { pin: [switch.geosil_eeokeon_mupung, select.geosil_eeokeon_pungryang],
-            env: [...거실 온습도계] }     # 제습기 내장 온도가 잡히지 않게
-  cimsil: { pin: [...무풍, 풍량, 바람 방향],
-            env: [...침실 온습도계] }     # 공기청정기 내장 온도가 잡히지 않게
+  geosil: { env: [...거실 온습도계] }     # 제습기 내장 온도가 잡히지 않게
+  cimsil: { env: [...침실 온습도계] }     # 공기청정기 내장 온도가 잡히지 않게
 ```
+
+> climate 팝업 타일의 기본 feature 는 hvac·온도·풍량·운전기능(무풍) 4종이다.
+> 거실 스탠드에 스윙(바람문)을 안 주는 이유: 바람문은 무풍 중 조작이 무시되는
+> 데다 기기 뷰의 전용 스위치가 이미 있다.
 
 > 이 집 온습도계는 entity_id 와 실제 위치가 어긋나 있다 (`geosil…temperature` 가
 > 침실). `env` 에 적을 때 ID 만 보고 고르지 말 것 — [§6](#이-집-ha-특유) 참고.

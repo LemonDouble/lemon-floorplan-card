@@ -23,6 +23,10 @@
  *   room_tint: temperature                         # 방 색: temperature(기본) | device | off
  *   temp_bands: {cold: 18, cool: 22, warm: 26, hot: 29}   # 온도 구간 경계 (℃)
  *   air: [sensor.co2, sensor.pm25]                 # 평면도 아래 공기질 줄 (device_class 로 해석)
+ *   demote: [media_player.geosil_seupikeo]         # 자주 쓰는 것에서 빼기 (전체 보기엔 남음)
+ *   popup_features:                                # 팝업 타일 feature 를 엔티티별로 교체
+ *     climate.cimsil_eeokeon:
+ *       - {type: climate-swing-modes, style: dropdown}
  *   rooms:
  *     geosil:
  *       primary: [climate.geosil_eeokeon, light.geosil_sopadeung]
@@ -385,6 +389,7 @@ class LemonFloorplanCard extends HTMLElement {
     }
 
     // 2) device 별 대표 엔티티 + 전체 목록으로 정리
+    const demote = new Set(this._config.demote || []);
     this._rooms = {};
     for (const [area, devMap] of Object.entries(byArea)) {
       const roomCfg = this._config.rooms?.[area] || {};
@@ -405,9 +410,11 @@ class LemonFloorplanCard extends HTMLElement {
         groups.push({ name: devName[devId] || "기타", ids });
 
         if (override) continue;
-        // 이 device 에서 가장 높은 우선순위 도메인을 찾고, 그 도메인 전부를 대표로
-        const top = PRIMARY_PRIORITY.find((d) => ids.some((e) => dom(e) === d));
-        if (top) primary.push(...ids.filter((e) => dom(e) === top));
+        // 이 device 에서 가장 높은 우선순위 도메인을 찾고, 그 도메인 전부를 대표로.
+        // demote 된 엔티티는 대표가 못 되고 전체 보기에만 남는다 (pin 은 명시라 이긴다)
+        const cand = ids.filter((e) => !demote.has(e));
+        const top = PRIMARY_PRIORITY.find((d) => cand.some((e) => dom(e) === d));
+        if (top) primary.push(...cand.filter((e) => dom(e) === top));
         // 이 device 에 속한 pin 은 대표 바로 뒤에 붙인다 (에어컨 옆에 무풍·풍량이 오도록)
         primary.push(...ids.filter((e) => pin.has(e) && !primary.includes(e)));
       }
@@ -815,13 +822,17 @@ class LemonFloorplanCard extends HTMLElement {
     return this._helpersP;
   }
 
-  /** 도메인별로 쓸 만한 tile feature 를 붙인다 */
+  /** 도메인별로 쓸 만한 tile feature 를 붙인다. popup_features 가 있으면 그대로 쓴다 */
   _tileConfig(eid) {
+    const custom = this._config.popup_features?.[eid];
+    if (custom) return { type: "tile", entity: eid, features: custom };
     const cfg = { type: "tile", entity: eid };
     switch (dom(eid)) {
       case "light":   cfg.features = [{ type: "light-brightness" }]; break;
       case "climate": cfg.features = [{ type: "climate-hvac-modes", style: "dropdown" },
-                                      { type: "target-temperature" }]; break;
+                                      { type: "target-temperature" },
+                                      { type: "climate-fan-modes", style: "dropdown" },
+                                      { type: "climate-preset-modes", style: "dropdown" }]; break;
       case "cover":   cfg.features = [{ type: "cover-open-close" }]; break;
       case "fan":     cfg.features = [{ type: "fan-speed" }]; break;
       case "lock":    cfg.features = [{ type: "lock-commands" }]; break;
